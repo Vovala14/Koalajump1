@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "600998730812",
+    "project_id": "koalajump-a2bbf",
+    "storage_bucket": "koalajump-a2bbf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:600998730812:android:a305439f7d0dffe165b739",
+        "android_client_info": {
+          "package_name": "com.lavrik.koalajump"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "600998730812-ar58a2se1aktl2kkj3492vmi3t5e5715.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhrTiaabRAgOe2uBAJjMxNh-_38x1gBc4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "600998730812-ar58a2se1aktl2kkj3492vmi3t5e5715.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
