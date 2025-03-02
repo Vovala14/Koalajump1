@@ -1,68 +1,101 @@
 package com.lavrik.koalajump
 
 import android.util.Log
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 
 class GameState {
-    var isPlaying by mutableStateOf(false)
-    var score by mutableStateOf(0)
-    var lives by mutableStateOf(3)
-    var selectedCharacter by mutableStateOf<Int?>(null)
-    var isGameOver by mutableStateOf(false)
-    var isJumping by mutableStateOf(false)
+    // Game status
+    val isGameActive = mutableStateOf(false)
 
-    // Use proper MutableLists tracked by state
-    private val _obstacles = mutableListOf<Obstacle>()
-    private val _collectibles = mutableListOf<Collectible>()
+    // Scoring
+    val finalScore = mutableStateOf(0)
 
-    // Wrapper for obstacles to trigger recomposition
-    var obstaclesState by mutableStateOf(0)
-    var collectiblesState by mutableStateOf(0)
+    val highScore = mutableStateOf(0)
 
-    val obstacles: MutableList<Obstacle> get() {
-        return _obstacles
+    // Game difficulty
+    val gameSpeed = mutableStateOf(10f)
+
+    // Player lives
+    val lives = mutableStateOf(3)
+
+    // Current game level
+    val currentLevel = mutableStateOf(1)
+
+    // Reset game state for a new game
+    fun resetForNewGame() {
+        Log.d("GameState", "Resetting game state")
+        isGameActive.value = true
+        finalScore.value = 0
+        lives.value = 3
+        currentLevel.value = 1
+        gameSpeed.value = 10f
     }
 
-    val collectibles: MutableList<Collectible> get() {
-        return _collectibles
+    // Update score during game
+    fun updateScore(newScore: Int) {
+        Log.d("GameState", "Updating score: $newScore")
+        finalScore.value = newScore
+
+        // Update high score if needed
+        if (newScore > highScore.value) {
+            highScore.value = newScore
+            Log.d("GameState", "New high score: ${highScore.value}")
+        }
     }
 
-    // Override add methods to trigger recomposition
-    fun addObstacle(obstacle: Obstacle) {
-        _obstacles.add(obstacle)
-        obstaclesState++
-        Log.d("GAME_DEBUG", "Added obstacle, count: ${_obstacles.size}")
+    // Decrease lives
+    fun decreaseLife() {
+        lives.value--
+        Log.d("GameState", "Life lost. Remaining lives: ${lives.value}")
     }
 
-    fun addCollectible(collectible: Collectible) {
-        _collectibles.add(collectible)
-        collectiblesState++
-        Log.d("GAME_DEBUG", "Added collectible, count: ${_collectibles.size}")
+    // Increase level
+    fun increaseLevel() {
+        currentLevel.value++
+        // Optionally increase game speed with level
+        gameSpeed.value += 0.5f
+        Log.d("GameState", "Level up. Current level: ${currentLevel.value}")
     }
 
-    fun clearObstacles() {
-        _obstacles.clear()
-        obstaclesState++
-        Log.d("GAME_DEBUG", "Cleared obstacles")
+    // End the game
+    fun endGame() {
+        Log.d("GameState", "Game ended. Final score: ${finalScore.value}")
+        isGameActive.value = false
+        updateHighScore()
     }
 
-    fun clearCollectibles() {
-        _collectibles.clear()
-        collectiblesState++
-        Log.d("GAME_DEBUG", "Cleared collectibles")
+    // Check if game is over
+    fun isGameOver(): Boolean {
+        val gameOver = lives.value <= 0
+        if (gameOver) {
+            Log.d("GameState", "Game over - no lives remaining")
+        }
+        return gameOver
+    }
+
+    // Update high score
+    private fun updateHighScore() {
+        if (finalScore.value > highScore.value) {
+            highScore.value = finalScore.value
+            Log.d("GameState", "High score updated to: ${highScore.value}")
+        }
+    }
+
+    // Bonus methods for game mechanics
+    fun collectPowerup() {
+        // Example of a potential game mechanic
+        lives.value = minOf(lives.value + 1, 5)
+        Log.d("GameState", "Powerup collected. Lives: ${lives.value}")
+    }
+
+    // Reset everything to initial state
+    fun fullReset() {
+        Log.d("GameState", "Performing full game state reset")
+        isGameActive.value = false
+        finalScore.value = 0
+        highScore.value = maxOf(highScore.value, finalScore.value)
+        lives.value = 3
+        currentLevel.value = 1
+        gameSpeed.value = 10f
     }
 }
-
-data class Obstacle(
-    val x: Float,
-    val y: Float,
-    val type: String = "tree"
-)
-
-data class Collectible(
-    val x: Float,
-    val y: Float,
-    val type: String // "beer" or "crown"
-)

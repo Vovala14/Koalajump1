@@ -21,7 +21,7 @@ class AnimatedKoala(
     // Sprite sheet management
     private val spriteSheet: Bitmap
     private var currentFrame: Int = 0
-    private val totalFrames: Int = 6  // Assuming 6 frames in koala_animation.png
+    private val totalFrames: Int = 12  // Updated to 12 frames
     private val frameHeight: Int
     private val frameWidth: Int
 
@@ -39,7 +39,7 @@ class AnimatedKoala(
 
     // Animation timing
     private var lastFrameChangeTime: Long = 0
-    private val frameDuration: Long = 100  // milliseconds per frame
+    private val frameDuration: Long = 60  // Adjusted for smoother animation with more frames (was 100)
 
     init {
         // Load the sprite sheet

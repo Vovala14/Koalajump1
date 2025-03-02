@@ -29,7 +29,11 @@ class GameInterface(private val context: Context, private val activity: Componen
     private val TAG = "GameInterface"
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
-    private lateinit var googleSignInClient: GoogleSignInClient
+
+    // Fixed lateinit warnings by initializing in constructor
+    private val googleSignInClient: GoogleSignInClient
+    private val signInLauncher: ActivityResultLauncher<Intent>
+
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
     // Auth related properties
@@ -44,9 +48,6 @@ class GameInterface(private val context: Context, private val activity: Componen
 
     val photoUrl: String?
         get() = auth.currentUser?.photoUrl?.toString()
-
-    // Initialize Google Sign-in
-    private lateinit var signInLauncher: ActivityResultLauncher<Intent>
 
     init {
         // Configure Google Sign In
