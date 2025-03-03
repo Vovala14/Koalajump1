@@ -4,85 +4,98 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.WindowInsets
-import android.view.WindowInsetsController
+import android.view.View
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.WindowCompat
 
 /**
- * Splash screen activity optimized for landscape orientation
+ * Ultra-minimal splash screen to avoid any performance issues
+ * Pure white background with just a progress bar
  */
 class SplashActivity : AppCompatActivity() {
+    companion object {
+        private const val SPLASH_DURATION = 1000L // Just 1 second for faster loading
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Create a horizontal layout for landscape
-        val rootLayout = LinearLayout(this)
-        rootLayout.orientation = LinearLayout.HORIZONTAL
-        rootLayout.gravity = android.view.Gravity.CENTER
-        rootLayout.setBackgroundColor(android.graphics.Color.WHITE)
+        // Create a minimal layout with WHITE background
+        val rootLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(android.graphics.Color.WHITE) // Pure white
+        }
 
-        // Create the studio text
-        val studioText = TextView(this)
-        studioText.text = "Lavrik Game Studio"
-        studioText.textSize = 36f
-        studioText.setTextColor(android.graphics.Color.BLACK)
+        // Create the game title text
+        val titleText = TextView(this).apply {
+            text = "Koala Jump"
+            textSize = 36f
+            setTextColor(android.graphics.Color.parseColor("#4CAF50")) // Green
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.CENTER
+                bottomMargin = (12 * resources.displayMetrics.density).toInt()
+            }
+        }
 
-        // For landscape, put the text and progress bar side by side with some spacing
-        val textLayoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        textLayoutParams.marginEnd = (30 * resources.displayMetrics.density).toInt() // 30dp margin
-        studioText.layoutParams = textLayoutParams
+        // Add "Lavrik Game Studio" text
+        val studioText = TextView(this).apply {
+            text = "Lavrik Game Studio"
+            textSize = 18f
+            setTextColor(android.graphics.Color.GRAY) // Subtle gray color
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.CENTER
+                bottomMargin = (24 * resources.displayMetrics.density).toInt()
+            }
+        }
 
-        // Create a progress bar
-        val progressBar = android.widget.ProgressBar(this)
-        val progressParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        progressBar.layoutParams = progressParams
+        // Create a simple progress bar (horizontal style)
+        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                (250 * resources.displayMetrics.density).toInt(), // Wider
+                (20 * resources.displayMetrics.density).toInt()   // Taller
+            ).apply {
+                gravity = android.view.Gravity.CENTER
+            }
+            max = 100
+            progress = 0
+        }
 
         // Add views to the layout
-        rootLayout.addView(studioText)
+        rootLayout.addView(titleText)
+        rootLayout.addView(studioText) // Add the studio name
         rootLayout.addView(progressBar)
 
         // Set the content view
         setContentView(rootLayout)
 
-        // Set fullscreen using modern APIs
-        setFullscreen()
+        // Set fullscreen
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN)
 
-        // After delay, launch MainActivity
-        Handler(Looper.getMainLooper()).postDelayed({
-            val intent = Intent(this, MainActivity::class.java)
-            startActivity(intent)
-            finish()
-        }, 2000) // 2 seconds
-    }
+        // Animate the progress bar to indicate loading
+        val handler = Handler(Looper.getMainLooper())
+        val progressIncrement = 5
 
-    /**
-     * Set fullscreen mode using the appropriate API based on Android version
-     */
-    private fun setFullscreen() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            // For Android 11+ (API 30+)
-            window.setDecorFitsSystemWindows(false)
-            window.insetsController?.let {
-                it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            // For older versions, use WindowCompat from AndroidX
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            WindowCompat.getInsetsController(window, window.decorView)?.apply {
-                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-                systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+        for (i in 1..20) {
+            handler.postDelayed({
+                progressBar.progress = i * progressIncrement
+
+                // When we reach 100%, launch the main activity
+                if (i == 20) {
+                    val intent = Intent(this@SplashActivity, MainActivity::class.java)
+                    startActivity(intent)
+                    finish()
+                }
+            }, i * (SPLASH_DURATION / 20))
         }
     }
 }
