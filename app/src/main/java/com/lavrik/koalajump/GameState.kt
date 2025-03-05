@@ -102,6 +102,7 @@ class GameState {
         Log.d(TAG, "Added $adjustedPoints points (base: $points, multiplier: $comboMultiplier)")
     }
 
+
     /**
      * Record a collectible being collected and update combo
      */
