@@ -2,12 +2,12 @@
 <project version="4">
   <component name="deploymentTargetSelector">
     <selectionStates>
-      <SelectionState runConfigName="koalajump">
+      <SelectionState runConfigName="KoalaJump.app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2025-02-27T17:08:13.575468100Z">
+        <DropdownSelection timestamp="2025-03-05T14:13:05.637506900Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=R8YY105YX2L" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\voval\.android\avd\Pixel_Tablet.avd" />
             </handle>
           </Target>
         </DropdownSelection>

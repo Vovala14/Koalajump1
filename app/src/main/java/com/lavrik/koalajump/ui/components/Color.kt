@@ -1,4 +1,4 @@
-package com.lavrik.koalajump.ui.theme
+package com.lavrik.koalajump.ui.components
 
 import androidx.compose.ui.graphics.Color
 

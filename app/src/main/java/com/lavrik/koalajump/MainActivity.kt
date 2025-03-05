@@ -11,108 +11,46 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.lavrik.koalajump.screens.GameOverScreen
 import com.lavrik.koalajump.screens.GameScreen
 import com.lavrik.koalajump.screens.LeaderboardScreen
-import com.lavrik.koalajump.screens.MainMenuScreen
-import com.lavrik.koalajump.ui.theme.KoalaJumpTheme
-// Use classes directly without renaming
-import android.graphics.BitmapFactory
-import android.util.LruCache
-import android.graphics.Bitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.lavrik.koalajump.screens.EnhancedMainMenuScreen
+import com.lavrik.koalajump.ui.components.KoalaJumpTheme
 
-// ===== DIRECTLY EMBED THE BITMAP MANAGER HERE TO AVOID IMPORT ISSUES =====
 /**
- * Simple utility to cache and load bitmaps
+ * Main activity for the game
  */
-class BitmapCache(private val context: ComponentActivity) {
-    private val TAG = "BitmapCache"
-
-    // Create a memory cache
-    private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
-    private val cacheSize = maxMemory / 8
-
-    private val bitmapCache = LruCache<Int, Bitmap>(cacheSize)
-
-    suspend fun loadBitmap(resourceId: Int): Bitmap {
-        // Check if already in cache
-        bitmapCache.get(resourceId)?.let {
-            return it
-        }
-
-        // Load bitmap
-        return withContext(Dispatchers.IO) {
-            val bitmap = BitmapFactory.decodeResource(context.resources, resourceId)
-            bitmapCache.put(resourceId, bitmap)
-            bitmap
-        }
-    }
-
-    fun clearCache() {
-        bitmapCache.evictAll()
-    }
-}
-
-// ===== DIRECTLY EMBED THE PERFORMANCE TRACKER HERE TO AVOID IMPORT ISSUES =====
-/**
- * Simple FPS tracker
- */
-class PerformanceMonitor {
-    private val TAG = "PerformanceMonitor"
-    private var frameCount = 0
-    private var lastTime = System.currentTimeMillis()
-    private var fps = 0
-
-    fun countFrame() {
-        frameCount++
-
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastTime
-
-        if (elapsed >= 1000) {
-            fps = (frameCount * 1000 / elapsed).toInt()
-            frameCount = 0
-            lastTime = now
-
-            Log.d(TAG, "FPS: $fps")
-        }
-    }
-
-    fun getFps(): Int = fps
-}
-
 class MainActivity : ComponentActivity() {
-    // Embedded classes instead of imported ones
-    lateinit var bitmapCache: BitmapCache
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
+    // Utility classes
+    lateinit var bitmapManager: BitmapManager
     lateinit var performanceMonitor: PerformanceMonitor
 
-    // Track current orientation
-    private var isPortraitMode = true
-
-    // User preference for orientation locking
-    private var orientationLocked = true
+    // Game state - accessible throughout the app
+    private val gameState = GameState()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Force portrait mode at startup
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        isPortraitMode = true
 
-        // Add crash handler
+        // Add crash handler for better debugging
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e("CRASH_HANDLER", "Uncaught exception: ${throwable.message}", throwable)
         }
 
-        Log.d("MainActivity", "Starting app")
+        Log.d(TAG, "Starting app")
 
         // Initialize utilities
-        bitmapCache = BitmapCache(this)
+        bitmapManager = BitmapManager(this)
         performanceMonitor = PerformanceMonitor()
 
         setContent {
@@ -121,72 +59,95 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Pass the orientation toggle function to GameNavigation
-                    GameNavigation(
-                        toggleOrientationLock = { locked ->
-                            orientationLocked = locked
-                            updateOrientation()
-                        }
-                    )
+                    // Pass gameState to the GameNavigation composable
+                    GameNavigation(gameState = gameState)
                 }
             }
         }
 
-        Log.d("MainActivity", "App started successfully")
+        // Update orientation based on initial setting
+        updateOrientation(gameState.getAllowRotation())
+
+        // Listen for orientation changes
+        gameState.observeAllowRotation(this) { allowRotation ->
+            updateOrientation(allowRotation)
+        }
+
+        Log.d(TAG, "App started successfully")
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
 
-        // If we're not locking orientation, allow the change
-        if (!orientationLocked) {
-            isPortraitMode = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
-            Log.d("MainActivity", "Orientation changed to: ${if (isPortraitMode) "portrait" else "landscape"}")
-        } else {
-            // If we're locking, force back to portrait
-            if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
+        Log.d(TAG, "Configuration changed, orientation: " +
+                if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait")
+
+        // If we're not allowing rotation, force back to portrait
+        if (!gameState.getAllowRotation() && newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
-    // Method to update orientation based on current settings
-    private fun updateOrientation() {
-        if (orientationLocked) {
-            // Force portrait if locked
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            isPortraitMode = true
-            Log.d("MainActivity", "Orientation locked to portrait")
-        } else {
+    /**
+     * Update orientation based on user preference
+     */
+    private fun updateOrientation(allowRotation: Boolean) {
+        if (allowRotation) {
             // Allow sensor-based orientation
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            Log.d("MainActivity", "Orientation unlocked - following sensor")
+            Log.d(TAG, "Orientation unlocked - following sensor")
+        } else {
+            // Force portrait only
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            Log.d(TAG, "Orientation locked to portrait")
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        performanceMonitor.start()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        performanceMonitor.stop()
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        bitmapCache.clearCache()
+        bitmapManager.clearCache()
     }
 }
 
+/**
+ * Main navigation component for the game
+ * @param gameState The central game state to pass to all screens
+ */
 @Composable
-fun GameNavigation(toggleOrientationLock: (Boolean) -> Unit = {}) {
+fun GameNavigation(gameState: GameState) {
     Log.d("GameNavigation", "Starting navigation")
 
     val navController = rememberNavController()
-    val gameState = remember { GameState() }
 
+    // Remember the navigation controller to pass with gameState
+    SetupNavigation(navController, gameState)
+}
+
+/**
+ * Setup navigation routes with proper parameter passing
+ */
+@Composable
+private fun SetupNavigation(navController: NavHostController, gameState: GameState) {
     NavHost(
         navController = navController,
         startDestination = "mainMenu"
     ) {
         composable("mainMenu") {
             Log.d("Navigation", "Showing Main Menu")
-            MainMenuScreen(
+            EnhancedMainMenuScreen(
+                gameState = gameState,
                 onStartGame = {
                     Log.d("Navigation", "Start Game button clicked")
-                    gameState.resetForNewGame()
                     try {
                         navController.navigate("game") {
                             popUpTo("mainMenu") { inclusive = false }
@@ -200,15 +161,16 @@ fun GameNavigation(toggleOrientationLock: (Boolean) -> Unit = {}) {
                     Log.d("Navigation", "Leaderboard button clicked")
                     navController.navigate("leaderboard")
                 },
-                onToggleOrientation = {
-                    // Pass orientation lock toggle to MainActivity
-                    toggleOrientationLock(!it) // invert: true = portrait only, false = allow rotation
+                onToggleOrientation = { allowRotation ->
+                    Log.d("Navigation", "Toggling orientation: allow=$allowRotation")
+                    gameState.setAllowRotation(allowRotation)
                 }
             )
         }
 
         composable("game") {
             Log.d("Navigation", "Composing Game Screen")
+            // Pass gameState and navController to GameScreen
             GameScreen(
                 gameState = gameState,
                 navController = navController
@@ -217,9 +179,9 @@ fun GameNavigation(toggleOrientationLock: (Boolean) -> Unit = {}) {
 
         composable("gameOver") {
             Log.d("Navigation", "Showing Game Over Screen")
+            // Pass all required parameters to GameOverScreen
             GameOverScreen(
-                score = gameState.finalScore.value,
-                highScore = gameState.highScore.value,
+                gameState = gameState,
                 onRestart = {
                     Log.d("Navigation", "Play Again button clicked")
                     gameState.resetForNewGame()
@@ -239,7 +201,9 @@ fun GameNavigation(toggleOrientationLock: (Boolean) -> Unit = {}) {
 
         composable("leaderboard") {
             Log.d("Navigation", "Showing Leaderboard")
+            // Pass gameState to LeaderboardScreen
             LeaderboardScreen(
+                gameState = gameState,
                 navController = navController,
                 onClose = {
                     Log.d("Navigation", "Back button clicked")
