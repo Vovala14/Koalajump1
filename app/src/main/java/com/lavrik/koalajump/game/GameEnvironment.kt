@@ -71,7 +71,8 @@ enum class GameEnvironment(
     );
 
     companion object {
-        private const val POINTS_PER_LEVEL = 300
+        // Changed from 300 to 150 for faster level progression
+        private const val POINTS_PER_LEVEL = 150
 
         /**
          * Get environment based on player score

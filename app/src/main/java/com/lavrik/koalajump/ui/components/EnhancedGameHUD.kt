@@ -20,6 +20,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lavrik.koalajump.game.GameEnvironment
 import kotlinx.coroutines.delay
 
 @Composable
@@ -27,7 +28,8 @@ fun EnhancedGameHUD(
     score: Int,
     level: Int,
     lives: Int,
-    hasSpeedBoost: Boolean
+    hasSpeedBoost: Boolean,
+    environment: GameEnvironment = GameEnvironment.FOREST // Default value for backward compatibility
 ) {
     Box(
         modifier = Modifier
@@ -75,7 +77,7 @@ fun EnhancedGameHUD(
                 )
             }
 
-            // Level indicator
+            // Environment & Level indicator
             Box(
                 modifier = Modifier
                     .background(
@@ -85,7 +87,7 @@ fun EnhancedGameHUD(
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "Level $level",
+                    text = "${environment.levelName} (Level $level)",
                     style = TextStyle(
                         color = Color.White,
                         fontSize = 16.sp,

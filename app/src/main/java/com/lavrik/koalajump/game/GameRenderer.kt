@@ -30,7 +30,7 @@ class GameRenderer(
     private var koala: AnimatedKoala? = null
     private var treeImage: Bitmap? = null
     private var beerImage: Bitmap? = null
-    // Remove the bitmap variable since we'll use resource ID directly
+    private var boosterImage: Bitmap? = null
     private var clouds: List<Cloud> = emptyList()
 
     // Shared Paint object for optimized rendering
@@ -55,9 +55,12 @@ class GameRenderer(
                     // Remove deprecated options
                 }
 
-                // Load other assets
+                // Load standard assets
                 treeImage = BitmapFactory.decodeResource(context.resources, R.drawable.tree, options)
                 beerImage = BitmapFactory.decodeResource(context.resources, R.drawable.beer, options)
+
+                // Load booster image
+                boosterImage = BitmapFactory.decodeResource(context.resources, R.drawable.booster, options)
 
                 // Initialize koala
                 koala = AnimatedKoala(
@@ -65,8 +68,6 @@ class GameRenderer(
                     screenWidth = screenWidth,
                     screenHeight = screenHeight
                 )
-
-
 
                 // Initialize clouds
                 clouds = Cloud.createClouds(
@@ -82,11 +83,60 @@ class GameRenderer(
                         "Memory: ${treeImage?.byteCount?.div(1024) ?: 0}KB")
                 Log.d(TAG, "Beer image: ${beerImage?.width}x${beerImage?.height}, " +
                         "Memory: ${beerImage?.byteCount?.div(1024) ?: 0}KB")
+                Log.d(TAG, "Booster image: ${boosterImage?.width}x${boosterImage?.height}, " +
+                        "Memory: ${boosterImage?.byteCount?.div(1024) ?: 0}KB")
 
                 // Force another garbage collection after loading
                 System.gc()
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading assets", e)
+            }
+        }
+    }
+
+    /**
+     * Load environment-specific images
+     */
+    suspend fun loadEnvironmentImages(environment: GameEnvironment) {
+        withContext(Dispatchers.IO) {
+            try {
+                // Use RGB_565 for all bitmaps to save memory
+                val options = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+
+                // Get the appropriate obstacle image based on environment
+                val obstacleResId = when (environment.obstacleType) {
+                    "tree" -> R.drawable.tree
+                    "cactus" -> R.drawable.cactus
+                    "rock" -> R.drawable.rock
+                    "shell" -> R.drawable.shell
+                    "vine" -> R.drawable.vine
+                    else -> R.drawable.tree
+                }
+
+                // Get the appropriate collectible image based on environment
+                val collectibleResId = when (environment.collectibleType) {
+                    "beer" -> R.drawable.beer
+                    "water" -> R.drawable.water
+                    "coffee" -> R.drawable.coffee
+                    "coconut" -> R.drawable.coconut
+                    "fruit" -> R.drawable.fruit
+                    else -> R.drawable.beer
+                }
+
+                // Recycle old bitmaps to free memory
+                treeImage?.recycle()
+                beerImage?.recycle()
+
+                // Load new images
+                treeImage = BitmapFactory.decodeResource(context.resources, obstacleResId, options)
+                beerImage = BitmapFactory.decodeResource(context.resources, collectibleResId, options)
+
+                Log.d(TAG, "Environment images loaded: ${environment.levelName}")
+                System.gc() // Request garbage collection
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading environment images", e)
             }
         }
     }
@@ -117,6 +167,11 @@ class GameRenderer(
     fun getBeerImage(): Bitmap? = beerImage
 
     /**
+     * Get the booster image for game rendering
+     */
+    fun getBoosterImage(): Bitmap? = boosterImage
+
+    /**
      * Set koala power-up state
      */
     fun setKoalaPowerUpState(powered: Boolean) {
@@ -129,10 +184,11 @@ class GameRenderer(
     fun releaseResources() {
         treeImage?.recycle()
         beerImage?.recycle()
-        // Remove powerUpKoalaImage recycle since we're not loading it as a bitmap anymore
+        boosterImage?.recycle()
 
         treeImage = null
         beerImage = null
+        boosterImage = null
         koala = null
         clouds = emptyList()
     }

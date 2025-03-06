@@ -110,9 +110,23 @@ class GameLoop(
             // Update game state values
             gameState.score.value = score
 
+            // Check for environment changes based on score
+            checkForEnvironmentChange()
+
             // Add delay to control frame rate
             delay(FRAME_DELAY)
         }
+    }
+
+    /**
+     * Check for level changes based on score
+     */
+    private fun checkForEnvironmentChange() {
+        gameState.updateEnvironment(score)
+
+        // Apply environment effects
+        val environment = gameState.currentEnvironment.value
+        gameSpeedMultiplier = environment.speedMultiplier
     }
 
     /**
@@ -175,7 +189,7 @@ class GameLoop(
                 // Place beyond the furthest one with spacing
                 Triple(
                     furthestCollectible + 400f + (Math.random() * 300).toFloat(),
-                    groundY - 135f - (Math.random() * 180f).toFloat(), // 10% lower (was 150f and 200f)
+                    groundY - 120f - (Math.random() * 160f).toFloat(), // 20% lower for respawning
                     true
                 )
             } else {
@@ -195,7 +209,8 @@ class GameLoop(
 
             if (active && Math.abs(x - koalaX) < 70 && Math.abs(y - koalaY) < 70) {
                 // Collision detected!
-                score += 10
+                // Use the collectible value from current environment
+                score += gameState.currentEnvironment.value.collectibleValue
                 soundManager.playCollectSound()
 
                 // Mark as collected

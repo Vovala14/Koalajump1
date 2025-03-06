@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
+import com.lavrik.koalajump.game.GameEnvironment
 
 /**
  * Central game state manager with improved state handling
@@ -43,6 +44,9 @@ class GameState {
 
     // Current game level
     val currentLevel = mutableStateOf(INITIAL_LEVEL)
+
+    // Current environment
+    val currentEnvironment = mutableStateOf(GameEnvironment.FOREST)
 
     // Recent collectibles for combo tracking
     private val _recentCollectTimes = mutableListOf<Long>()
@@ -85,9 +89,23 @@ class GameState {
         finalScore.value = 0
         lives.value = INITIAL_LIVES
         currentLevel.value = INITIAL_LEVEL
+        currentEnvironment.value = GameEnvironment.FOREST
         gameSpeed.value = INITIAL_SPEED
         currentCombo.value = 0
         _recentCollectTimes.clear()
+    }
+
+    /**
+     * Update environment based on score
+     */
+    fun updateEnvironment(score: Int) {
+        val newEnvironment = GameEnvironment.getEnvironmentForScore(score)
+        currentLevel.value = GameEnvironment.getLevelForScore(score)
+
+        // Only update if environment changed
+        if (newEnvironment != currentEnvironment.value) {
+            currentEnvironment.value = newEnvironment
+        }
     }
 
     /**
@@ -100,6 +118,9 @@ class GameState {
 
         score.value += adjustedPoints
         Log.d(TAG, "Added $adjustedPoints points (base: $points, multiplier: $comboMultiplier)")
+
+        // Update environment based on new score
+        updateEnvironment(score.value)
     }
 
 
@@ -261,6 +282,7 @@ class GameState {
         highScore.value = maxOf(highScore.value, finalScore.value)
         lives.value = INITIAL_LIVES
         currentLevel.value = INITIAL_LEVEL
+        currentEnvironment.value = GameEnvironment.FOREST
         gameSpeed.value = INITIAL_SPEED
         currentCombo.value = 0
         _recentCollectTimes.clear()
