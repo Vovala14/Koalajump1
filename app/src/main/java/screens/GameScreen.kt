@@ -5,8 +5,11 @@ import android.graphics.Paint
 import android.util.Log
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +21,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -25,8 +29,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.lavrik.koalajump.GameState
 import com.lavrik.koalajump.R
@@ -40,6 +46,42 @@ private const val TAG = "GameScreen"
 
 // Data class for collectibles: x, y, active, isBooster
 data class Collectible(val x: Float, val y: Float, val active: Boolean, val isBooster: Boolean)
+
+// Add object scale factor for better visibility
+private const val OBJECT_SCALE_FACTOR = 1.8f
+
+/**
+ * Simple custom pause button that doesn't rely on material icons
+ */
+@Composable
+fun PauseButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .background(Color.White.copy(alpha = 0.7f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        // Draw custom pause icon (two vertical bars)
+        Canvas(modifier = Modifier.size(24.dp)) {
+            // Left bar
+            drawRect(
+                color = Color.Black,
+                topLeft = Offset(size.width * 0.25f, size.height * 0.2f),
+                size = Size(size.width * 0.15f, size.height * 0.6f),
+                style = Fill
+            )
+
+            // Right bar
+            drawRect(
+                color = Color.Black,
+                topLeft = Offset(size.width * 0.6f, size.height * 0.2f),
+                size = Size(size.width * 0.15f, size.height * 0.6f),
+                style = Fill
+            )
+        }
+    }
+}
 
 /**
  * Improved GameScreen with proper animation and game loop
@@ -68,6 +110,9 @@ fun GameScreen(
     var gameRunning by remember { mutableStateOf(true) }
     var invincibleTime by remember { mutableStateOf(0L) } // Invincibility after hit
 
+    // Add pause state
+    var isGamePaused by remember { mutableStateOf(false) }
+
     // Environment transition effect state
     var isTransitioning by remember { mutableStateOf(false) }
     var transitionAlpha by remember { mutableStateOf(0f) }
@@ -83,13 +128,13 @@ fun GameScreen(
         AnimatedKoala(context, screenWidth, screenHeight)
     }
 
-    // Tree, beer, and booster dimensions
-    val treeWidth = 40f
-    val treeHeight = 60f
-    val beerWidth = 30f
-    val beerHeight = 30f
-    val boosterWidth = 35f
-    val boosterHeight = 35f
+    // Tree, beer, and booster dimensions with scaling factor applied
+    val treeWidth = 40f * OBJECT_SCALE_FACTOR
+    val treeHeight = 60f * OBJECT_SCALE_FACTOR
+    val beerWidth = 30f * OBJECT_SCALE_FACTOR
+    val beerHeight = 30f * OBJECT_SCALE_FACTOR
+    val boosterWidth = 35f * OBJECT_SCALE_FACTOR
+    val boosterHeight = 35f * OBJECT_SCALE_FACTOR
 
     // Obstacles and collectibles
     var obstacles by remember { mutableStateOf(arrayOf(
@@ -257,118 +302,137 @@ fun GameScreen(
     // Game physics loop
     LaunchedEffect(Unit) {
         while (gameRunning && gameState.isGameActive.value) {
-            val currentTime = System.currentTimeMillis()
+            // Only update game if not paused
+            if (!isGamePaused) {
+                val currentTime = System.currentTimeMillis()
 
-            // Update the koala animation and physics
-            koala.update()
+                // Update the koala animation and physics
+                koala.update()
 
-            // Get koala hitbox
-            val koalaHitbox = koala.getBounds()
+                // Get koala hitbox
+                val koalaHitbox = koala.getBounds()
 
-            // Move obstacles
-            val effectiveSpeed = 12f * (if (hasSpeedBoost) 1.5f else 1.0f) * gameState.currentEnvironment.value.speedMultiplier
-            val newObstacles = obstacles.copyOf()
+                // Move obstacles
+                val effectiveSpeed = 12f * (if (hasSpeedBoost) 1.5f else 1.0f) * gameState.currentEnvironment.value.speedMultiplier
+                val newObstacles = obstacles.copyOf()
 
-            for (i in obstacles.indices) {
-                newObstacles[i] -= effectiveSpeed
+                for (i in obstacles.indices) {
+                    newObstacles[i] -= effectiveSpeed
 
-                // Reset obstacle when offscreen
-                if (newObstacles[i] < -treeWidth) {
-                    val furthestObstacle = newObstacles.maxOrNull() ?: screenWidth
+                    // Reset obstacle when offscreen
+                    if (newObstacles[i] < -treeWidth) {
+                        val furthestObstacle = newObstacles.maxOrNull() ?: screenWidth
 
-                    // Increase spacing between trees when booster is active
-                    val baseSpacing = 400f
-                    val randomVariation = (Math.random() * 200).toFloat()
+                        // Increase spacing between trees when booster is active
+                        val baseSpacing = 400f
+                        val randomVariation = (Math.random() * 200).toFloat()
 
-                    // Add 75% more space between trees when boosted
-                    val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
+                        // Add 75% more space between trees when boosted
+                        val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
 
-                    newObstacles[i] = furthestObstacle + (baseSpacing * boostSpacingMultiplier) + randomVariation
-                }
-
-                // Create obstacle hitbox
-                val treeHitbox = Rect(
-                    left = newObstacles[i],
-                    top = groundY - treeHeight,
-                    right = newObstacles[i] + treeWidth,
-                    bottom = groundY
-                )
-
-                // Check for collision with koala - only if not invincible
-                if (currentTime > invincibleTime && !koala.isJumping && checkRectOverlap(koalaHitbox, treeHitbox)) {
-                    // Collision!
-                    soundManager.playHitSound()
-                    lives--
-
-                    // Set invincibility for 2 seconds
-                    invincibleTime = currentTime + 2000
-
-                    // Push obstacle away
-                    newObstacles[i] = screenWidth + 200f
-
-                    if (lives <= 0) {
-                        gameState.updateScore(score)
-                        gameState.endGame()
-                        gameRunning = false
-                        navController.navigate("gameOver")
-                        break
+                        newObstacles[i] = furthestObstacle + (baseSpacing * boostSpacingMultiplier) + randomVariation
                     }
-                }
-            }
-            obstacles = newObstacles
 
-            // Move collectibles - fixed implementation
-            for (i in collectibles.indices) {
-                val collectible = collectibles[i]
-
-                if (collectible.active) {
-                    // Move left if active
-                    val newX = collectible.x - effectiveSpeed
-
-                    // Determine the collectible dimensions based on type
-                    val collectibleWidth = if (collectible.isBooster) boosterWidth else beerWidth
-                    val collectibleHeight = if (collectible.isBooster) boosterHeight else beerHeight
-
-                    // Create collectible hitbox
-                    val collectibleHitbox = Rect(
-                        left = newX,
-                        top = collectible.y,
-                        right = newX + collectibleWidth,
-                        bottom = collectible.y + collectibleHeight
+                    // Create obstacle hitbox - FIXED: Use adjusted height for proper collision
+                    val treeHitbox = Rect(
+                        left = newObstacles[i],
+                        top = groundY - treeHeight,
+                        right = newObstacles[i] + treeWidth,
+                        bottom = groundY
                     )
 
-                    // Check for collection using proper hitbox collision
-                    if (checkRectOverlap(koalaHitbox, collectibleHitbox)) {
-                        // Collected!
-                        soundManager.playCollectSound()
-                        score += gameState.currentEnvironment.value.collectibleValue
+                    // Check for collision with koala - only if not invincible
+                    if (currentTime > invincibleTime && !koala.isJumping && checkRectOverlap(koalaHitbox, treeHitbox)) {
+                        // Collision!
+                        soundManager.playHitSound()
+                        lives--
 
-                        // Update to inactive state
-                        collectibles[i] = Collectible(newX, collectible.y, false, collectible.isBooster)
+                        // Set invincibility for 2 seconds
+                        invincibleTime = currentTime + 2000
 
-                        // If it's a booster, give speed boost
-                        if (collectible.isBooster) {
-                            hasSpeedBoost = true
-                            koala.setPowerUpState(true) // Set koala power-up state
-                            coroutineScope.launch {
-                                delay(5000)
-                                hasSpeedBoost = false
-                                koala.setPowerUpState(false) // Reset koala power-up state
-                            }
+                        // Push obstacle away
+                        newObstacles[i] = screenWidth + 200f
+
+                        if (lives <= 0) {
+                            gameState.updateScore(score)
+                            gameState.endGame()
+                            gameRunning = false
+                            navController.navigate("gameOver")
+                            break
                         }
+                    }
+                }
+                obstacles = newObstacles
 
-                        // Schedule respawn
-                        coroutineScope.launch {
-                            delay(1000) // Wait a bit
+                // Move collectibles - fixed implementation
+                for (i in collectibles.indices) {
+                    val collectible = collectibles[i]
 
-                            // Find furthest position
+                    if (collectible.active) {
+                        // Move left if active
+                        val newX = collectible.x - effectiveSpeed
+
+                        // Determine the collectible dimensions based on type
+                        val collectibleWidth = if (collectible.isBooster) boosterWidth else beerWidth
+                        val collectibleHeight = if (collectible.isBooster) boosterHeight else beerHeight
+
+                        // Create collectible hitbox
+                        val collectibleHitbox = Rect(
+                            left = newX,
+                            top = collectible.y,
+                            right = newX + collectibleWidth,
+                            bottom = collectible.y + collectibleHeight
+                        )
+
+                        // Check for collection using proper hitbox collision
+                        if (checkRectOverlap(koalaHitbox, collectibleHitbox)) {
+                            // Collected!
+                            soundManager.playCollectSound()
+                            score += gameState.currentEnvironment.value.collectibleValue
+
+                            // Update to inactive state
+                            collectibles[i] = Collectible(newX, collectible.y, false, collectible.isBooster)
+
+                            // If it's a booster, give speed boost
+                            if (collectible.isBooster) {
+                                hasSpeedBoost = true
+                                koala.setPowerUpState(true) // Set koala power-up state
+                                coroutineScope.launch {
+                                    delay(5000)
+                                    hasSpeedBoost = false
+                                    koala.setPowerUpState(false) // Reset koala power-up state
+                                }
+                            }
+
+                            // Schedule respawn
+                            coroutineScope.launch {
+                                delay(1000) // Wait a bit
+
+                                // Find furthest position
+                                val furthestX = collectibles.maxOf { it.x }
+
+                                // Respawn at new position with same type (booster or regular)
+                                val baseSpacing = 600f
+                                val randomVariation = (Math.random() * 400).toFloat()
+
+                                // Add 75% more space when boosted (matching tree spacing)
+                                val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
+
+                                collectibles[i] = Collectible(
+                                    furthestX + (baseSpacing * boostSpacingMultiplier) + randomVariation,
+                                    groundY - 120f - (Math.random() * 160f).toFloat(),
+                                    true,
+                                    collectible.isBooster // Keep the same type
+                                )
+                            }
+                        } else if (newX < -collectibleWidth) {
+                            // Reset if off screen
                             val furthestX = collectibles.maxOf { it.x }
 
-                            // Respawn at new position with same type (booster or regular)
                             val baseSpacing = 600f
                             val randomVariation = (Math.random() * 400).toFloat()
 
-                            // Add 75% more space when boosted (matching tree spacing)
+                            // Add 75% more space when boosted
                             val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
 
                             collectibles[i] = Collectible(
@@ -377,34 +441,18 @@ fun GameScreen(
                                 true,
                                 collectible.isBooster // Keep the same type
                             )
+                        } else {
+                            // Just update position
+                            collectibles[i] = Collectible(newX, collectible.y, collectible.active, collectible.isBooster)
                         }
-                    } else if (newX < -collectibleWidth) {
-                        // Reset if off screen
-                        val furthestX = collectibles.maxOf { it.x }
-
-                        val baseSpacing = 600f
-                        val randomVariation = (Math.random() * 400).toFloat()
-
-                        // Add 75% more space when boosted
-                        val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
-
-                        collectibles[i] = Collectible(
-                            furthestX + (baseSpacing * boostSpacingMultiplier) + randomVariation,
-                            groundY - 120f - (Math.random() * 160f).toFloat(),
-                            true,
-                            collectible.isBooster // Keep the same type
-                        )
-                    } else {
-                        // Just update position
-                        collectibles[i] = Collectible(newX, collectible.y, collectible.active, collectible.isBooster)
                     }
                 }
-            }
 
-            // Update score and check for environment changes
-            gameState.score.value = score
-            gameState.updateEnvironment(score)
-            currentLevel = gameState.currentLevel.value
+                // Update score and check for environment changes
+                gameState.score.value = score
+                gameState.updateEnvironment(score)
+                currentLevel = gameState.currentLevel.value
+            }
 
             delay(33) // ~30fps
         }
@@ -418,7 +466,7 @@ fun GameScreen(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures {
-                        if (!koala.isJumping) {
+                        if (!isGamePaused && !koala.isJumping) {
                             koala.jump()
                             soundManager.playJumpSound()
                         }
@@ -455,35 +503,33 @@ fun GameScreen(
                 koala.draw(this)
             }
 
-            // Draw obstacles (trees)
+            // Draw obstacles (trees) with FIXED positioning to prevent ground clipping
             obstacles.forEach { obstacleX ->
                 if (treeBitmap != null) {
+                    // Calculate target dimensions with scaling
+                    val targetWidth = treeWidth
+                    val targetHeight = treeHeight
+
                     // Create destination rectangle for scaled drawing
                     val dstRect = android.graphics.RectF(
                         obstacleX,
-                        groundY - treeHeight,
-                        obstacleX + treeWidth,
+                        groundY - targetHeight, // Position from the ground up
+                        obstacleX + targetWidth,
                         groundY
                     )
 
-                    // Draw tree with scaling to match desired size
+                    // Draw tree with scaling
                     drawContext.canvas.nativeCanvas.drawBitmap(
                         treeBitmap,
-                        null, // Use entire source bitmap
-                        dstRect, // Scale to this destination rectangle
+                        null,
+                        dstRect,
                         paint
-                    )
-                } else {
-                    // Fallback
-                    drawRect(
-                        color = Color.Green,
-                        topLeft = Offset(obstacleX, groundY - treeHeight),
-                        size = Size(treeWidth, treeHeight)
                     )
                 }
             }
 
-            // Draw collectibles (beers and boosters)
+
+            // Draw collectibles (beers and boosters) with proper scaling
             collectibles.forEach { collectible ->
                 if (collectible.active) {
                     // Determine which bitmap and dimensions to use
@@ -534,6 +580,23 @@ fun GameScreen(
                     size = this.size
                 )
             }
+
+            // Draw pause overlay if paused
+            if (isGamePaused) {
+                drawRect(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    size = this.size
+                )
+            }
+        }
+
+        // Add custom pause button in top-right corner
+        Box(
+            modifier = Modifier
+                .padding(16.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            PauseButton(onClick = { isGamePaused = true })
         }
 
         // Enhanced HUD
@@ -595,6 +658,19 @@ fun GameScreen(
                 }
             }
         }
+
+        // Pause dialog
+        if (isGamePaused) {
+            GamePauseDialog(
+                onResume = { isGamePaused = false },
+                onQuit = {
+                    gameState.endGame()
+                    navController.navigate("mainMenu") {
+                        popUpTo("game") { inclusive = true }
+                    }
+                }
+            )
+        }
     }
 
     // Cleanup
@@ -608,6 +684,74 @@ fun GameScreen(
             soundManager.release()
             gameState.isGameActive.value = false
             System.gc()
+        }
+    }
+}
+
+/**
+ * Renamed to GamePauseDialog to avoid naming conflicts
+ */
+@Composable
+private fun GamePauseDialog(
+    onResume: () -> Unit,
+    onQuit: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = { /* Do nothing to prevent dismiss on outside click */ }
+    ) {
+        Card(
+            modifier = Modifier
+                .width(280.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 8.dp
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Game Paused",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4CAF50)
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onResume,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4CAF50)
+                    ),
+                    border = null // Remove border to fix background color issue
+                ) {
+                    Text("Resume", fontSize = 16.sp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = onQuit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF9C27B0)
+                    ),
+                    border = null // Remove border to fix background color issue
+                ) {
+                    Text("Quit Game", fontSize = 16.sp)
+                }
+            }
         }
     }
 }

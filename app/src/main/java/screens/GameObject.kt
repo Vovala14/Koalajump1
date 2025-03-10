@@ -39,6 +39,9 @@ class GameObject(
 
         private const val ASSUMED_FPS = 60f
         private const val HITBOX_REDUCTION_PERCENT = 0.15f // 15% reduction on each side = 30% total
+
+        // Add scale factor constant to increase visual size of game objects
+        const val OBJECT_SCALE_FACTOR = 1.2f // Increase object size by 20%
     }
 
     // Image dimensions - calculate once
@@ -84,11 +87,30 @@ class GameObject(
     fun draw(drawScope: DrawScope) {
         if (!isActive) return
 
-        // Draw the object with high-quality rendering
+        // Apply scaling factor for better visibility
+        val scaledWidth = width * OBJECT_SCALE_FACTOR
+        val scaledHeight = height * OBJECT_SCALE_FACTOR
+
+        // Adjust Y position if it's an obstacle to prevent ground clipping
+        val adjustedY = if (isObstacle) {
+            y - (scaledHeight - height) // Lift up by the amount the height increased
+        } else {
+            y
+        }
+
+        // Create destination rectangle with scaled dimensions
+        val dstRect = android.graphics.RectF(
+            x,
+            adjustedY,
+            x + scaledWidth,
+            adjustedY + scaledHeight
+        )
+
+        // Draw the object with high-quality rendering and scaling
         drawScope.drawContext.canvas.nativeCanvas.drawBitmap(
             image,
-            x,
-            y,
+            null, // Use entire source bitmap
+            dstRect, // Scale to this destination rectangle
             paint
         )
     }
@@ -151,9 +173,20 @@ class GameObject(
      * Get standard collision bounds
      */
     fun getBounds(): Rect {
+        // Apply scaling factor to bounds
+        val scaledWidth = width * OBJECT_SCALE_FACTOR
+        val scaledHeight = height * OBJECT_SCALE_FACTOR
+
+        // Adjust Y position if it's an obstacle to match visual position
+        val adjustedY = if (isObstacle) {
+            y - (scaledHeight - height) // Match the adjustment in draw method
+        } else {
+            y
+        }
+
         return Rect(
-            offset = Offset(x, y),
-            size = Size(width.toFloat(), height.toFloat())
+            offset = Offset(adjustedY, y),
+            size = Size(scaledWidth, scaledHeight)
         )
     }
 
@@ -161,14 +194,27 @@ class GameObject(
      * Get reduced hitbox for more precise collision detection - using cached values
      */
     fun getPreciseHitbox(): Rect {
+        // Apply scaling factor to hitbox
+        val scaledWidth = width * OBJECT_SCALE_FACTOR
+        val scaledHeight = height * OBJECT_SCALE_FACTOR
+        val scaledWidthReduction = scaledWidth * HITBOX_REDUCTION_PERCENT
+        val scaledHeightReduction = scaledHeight * HITBOX_REDUCTION_PERCENT
+
+        // Adjust Y position if it's an obstacle to match visual position
+        val adjustedY = if (isObstacle) {
+            y - (scaledHeight - height) // Match the adjustment in draw method
+        } else {
+            y
+        }
+
         return Rect(
             offset = Offset(
-                x + widthReduction,
-                y + heightReduction
+                x + scaledWidthReduction,
+                adjustedY + scaledHeightReduction
             ),
             size = Size(
-                width.toFloat() - (widthReduction * 2),
-                height.toFloat() - (heightReduction * 2)
+                scaledWidth - (scaledWidthReduction * 2),
+                scaledHeight - (scaledHeightReduction * 2)
             )
         )
     }

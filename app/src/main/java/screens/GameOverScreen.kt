@@ -387,7 +387,7 @@ fun EnhancedScoreBox(
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center,
-                    maxLines = 1
+                    maxLines = 1 // FIXED: Ensure single line display
                 )
             }
         }
@@ -421,6 +421,7 @@ fun EnhancedActionButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = color
         ),
+        border = null, // FIXED: Remove border to fix background color issue
         elevation = ButtonDefaults.buttonElevation(
             defaultElevation = 4.dp,
             pressedElevation = 0.dp

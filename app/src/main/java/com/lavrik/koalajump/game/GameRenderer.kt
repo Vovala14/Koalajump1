@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import com.lavrik.koalajump.R
 import com.lavrik.koalajump.entities.AnimatedKoala
 import com.lavrik.koalajump.entities.Cloud
+import com.lavrik.koalajump.entities.GameObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -24,6 +25,9 @@ class GameRenderer(
     companion object {
         private const val TAG = "GameRenderer"
         private const val CLOUD_COUNT = 6
+
+        // Define the scaleFactor constant
+        const val OBJECT_SCALE_FACTOR = 1.2f
     }
 
     // Game assets
@@ -69,7 +73,7 @@ class GameRenderer(
                     screenHeight = screenHeight
                 )
 
-                // Initialize clouds
+                // Initialize clouds - make them 50% larger
                 clouds = Cloud.createClouds(
                     context = context,
                     screenWidth = screenWidth,
@@ -148,6 +152,66 @@ class GameRenderer(
         clouds.forEach { cloud ->
             cloud.updateSpeed(baseSpeed)
             cloud.update()
+        }
+    }
+
+    /**
+     * Draw tree with 50% larger rendering and adjusted vertical positioning
+     */
+    fun drawTree(drawScope: DrawScope, x: Float, y: Float) {
+        treeImage?.let { tree ->
+            // Calculate target dimensions (including scale factor)
+            val targetWidth = tree.width * OBJECT_SCALE_FACTOR * 1.5f
+            val targetHeight = tree.height * OBJECT_SCALE_FACTOR * 1.5f
+
+            // Adjust Y position to account for increased height
+            // This ensures the bottom of the tree stays on the ground
+            val adjustedY = y - targetHeight
+
+            // Create destination rectangle for scaled drawing
+            val dstRect = android.graphics.RectF(
+                x,
+                adjustedY,
+                x + targetWidth,
+                y
+            )
+
+            // Draw tree with scaling
+            drawScope.drawContext.canvas.nativeCanvas.drawBitmap(
+                tree,
+                null, // Use entire source bitmap
+                dstRect, // Scale to this destination rectangle
+                paint
+            )
+        }
+    }
+
+    /**
+     * Draw beer/collectible with 50% larger rendering
+     */
+    fun drawCollectible(drawScope: DrawScope, x: Float, y: Float, isBooster: Boolean = false) {
+        val image = if (isBooster) boosterImage else beerImage
+
+        image?.let { img ->
+            // Calculate target dimensions (including scale factor)
+            val targetWidth = img.width * OBJECT_SCALE_FACTOR * 1.5f
+            val targetHeight = img.height * OBJECT_SCALE_FACTOR * 1.5f
+
+            // Create destination rectangle for scaled drawing
+            val dstRect = android.graphics.RectF(
+                x,
+                y,
+                x + targetWidth,
+                y + targetHeight
+            )
+
+            // Draw collectible with scaling
+            drawScope.drawContext.canvas.nativeCanvas.drawBitmap(
+                img,
+                null, // Use entire source bitmap
+                dstRect, // Scale to this destination rectangle
+                paint
+            )
         }
     }
 

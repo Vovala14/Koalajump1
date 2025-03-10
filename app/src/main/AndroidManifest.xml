@@ -29,11 +29,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Main Activity with strict portrait mode for performance -->
+        <!-- FIXED: MainActivity with configChanges for better rotation handling -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:hardwareAccelerated="true"
             android:theme="@style/Theme.KoalaJump">
         </activity>

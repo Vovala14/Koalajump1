@@ -166,7 +166,7 @@ fun EnhancedMainMenuScreen(
                                     Card(
                                         modifier = Modifier
                                             .width(200.dp)
-                                            .height(56.dp),
+                                            .height(70.dp), // FIXED: Increased height from 56.dp to 70.dp
                                         colors = CardDefaults.cardColors(
                                             containerColor = Color(0xBBFFFFFF)
                                         ),
@@ -186,11 +186,13 @@ fun EnhancedMainMenuScreen(
                                                 fontSize = 14.sp,
                                                 color = Color.Black
                                             )
+                                            Spacer(modifier = Modifier.height(2.dp))
                                             Text(
                                                 text = "${gameState.highScore.value}",
                                                 fontSize = 20.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.Black
+                                                color = Color.Black,
+                                                maxLines = 1 // Ensure single line
                                             )
                                         }
                                     }
@@ -207,7 +209,7 @@ fun EnhancedMainMenuScreen(
                         Card(
                             modifier = Modifier
                                 .width(200.dp)
-                                .height(56.dp),
+                                .height(70.dp), // FIXED: Increased height from 56.dp to 70.dp
                             colors = CardDefaults.cardColors(
                                 containerColor = Color(0xBBFFFFFF)
                             ),
@@ -227,11 +229,13 @@ fun EnhancedMainMenuScreen(
                                     fontSize = 14.sp,
                                     color = Color.Black
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "${gameState.highScore.value}",
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.Black
+                                    color = Color.Black,
+                                    maxLines = 1 // Ensure single line
                                 )
                             }
                         }
@@ -268,10 +272,12 @@ fun EnhancedMainMenuScreen(
                     onSoundChanged = {
                         soundEnabled = it
                         gameState.soundEnabled.value = it
+                        gameState.saveSoundSetting(it) // FIXED: Save sound setting to preferences
                     },
                     onVibrationChanged = {
                         vibrationEnabled = it
                         gameState.vibrationEnabled.value = it
+                        gameState.saveVibrationSetting(it) // FIXED: Save vibration setting to preferences
                     },
                     onClose = {
                         menuState = MenuState.Idle
@@ -352,6 +358,7 @@ private fun EnhancedMenuButton(
             contentColor = Color.White,
             disabledContainerColor = Color(0xFF8BC34A)
         ),
+        border = null, // FIXED: Remove border to fix background color issue at corners
         enabled = enabled
     ) {
         Text(
@@ -433,7 +440,8 @@ private fun EnhancedSettingsPanel(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4CAF50)
-                )
+                ),
+                border = null // FIXED: Remove border to fix background color issue at corners
             ) {
                 Text(
                     text = "Done",

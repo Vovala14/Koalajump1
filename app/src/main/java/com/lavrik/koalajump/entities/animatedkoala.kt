@@ -27,17 +27,17 @@ class AnimatedKoala(
         private const val TAG = "AnimatedKoala"
         private const val HITBOX_REDUCTION_PERCENT = 0.15f
 
-        // Physics constants - adjusted for 10% larger koala
-        private const val PORTRAIT_JUMP_VELOCITY = -22.5f // Increased by 10%
-        private const val LANDSCAPE_JUMP_VELOCITY = -22f // Increased by 10%
-        private const val PORTRAIT_GRAVITY = 1.65f // Increased by 10%
-        private const val LANDSCAPE_GRAVITY = 1.32f // Increased by 10%
-        private const val PORTRAIT_GROUND_RATIO = 0.8f
-        private const val LANDSCAPE_GROUND_RATIO = 0.75f
+        // Physics constants - adjusted for 50% larger koala
+        private const val PORTRAIT_JUMP_VELOCITY = -23.5f // Adjusted for larger koala
+        private const val LANDSCAPE_JUMP_VELOCITY = -23f // Adjusted for larger koala
+        private const val PORTRAIT_GRAVITY = 1.8f // Adjusted for larger koala
+        private const val LANDSCAPE_GRAVITY = 1.5f // Adjusted for larger koala
+        private const val PORTRAIT_GROUND_RATIO = 0.78f
+        private const val LANDSCAPE_GROUND_RATIO = 0.73f
 
-        // Fixed size dimensions - increased by 10%
-        private const val TARGET_WIDTH = 55 // Increased from 50 to 55
-        private const val TARGET_HEIGHT = 55 // Increased from 50 to 55
+        // Fixed size dimensions - increased by 50%
+        private const val TARGET_WIDTH = 83 // Increased from 55 to 83 (50% larger)
+        private const val TARGET_HEIGHT = 83 // Increased from 55 to 83 (50% larger)
     }
 
     // GIF animation using Android's Movie class
@@ -94,7 +94,7 @@ class AnimatedKoala(
             screenWidth * 0.15f
         }
 
-        // Set ground Y position
+        // Set ground Y position with proper adjustment for scaled height
         groundY = if (isPortrait) {
             screenHeight * PORTRAIT_GROUND_RATIO - height
         } else {
@@ -115,7 +115,7 @@ class AnimatedKoala(
             // Apply gravity
             jumpVelocity += gravity
 
-            // Check if landed
+            // Check if landed with proper ground position
             if (y >= groundY) {
                 y = groundY
                 isJumping = false
@@ -144,8 +144,8 @@ class AnimatedKoala(
             // Set the current animation frame time
             animation.setTime(relTime)
 
-            // Scale factor based on orientation
-            val scaleFactor = if (isPortrait) 1f else 0.85f
+            // Scale factor based on orientation - increased by 50%
+            val scaleFactor = if (isPortrait) 1.5f else 1.275f // Increased from 1.0f/0.85f
 
             // Get the native canvas from the DrawScope
             val canvas = drawScope.drawContext.canvas.nativeCanvas
@@ -235,7 +235,7 @@ class AnimatedKoala(
             screenWidth * 0.15f
         }
 
-        // Update ground level
+        // Update ground level with proper adjustment for height
         groundY = if (isPortrait) {
             screenHeight * PORTRAIT_GROUND_RATIO - height
         } else {

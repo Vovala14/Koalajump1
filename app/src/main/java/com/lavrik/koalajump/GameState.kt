@@ -1,5 +1,7 @@
 package com.lavrik.koalajump
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.LifecycleOwner
@@ -8,9 +10,9 @@ import androidx.lifecycle.Observer
 import com.lavrik.koalajump.game.GameEnvironment
 
 /**
- * Central game state manager with improved state handling
+ * Central game state manager with improved state handling and persistence
  */
-class GameState {
+class GameState(private val context: Context) {
     companion object {
         private const val TAG = "GameState"
         private const val INITIAL_LIVES = 3
@@ -19,18 +21,28 @@ class GameState {
         private const val SPEED_INCREASE_PER_LEVEL = 0.8f  // Increased from 0.5f for more challenge
         private const val MAX_LIVES = 5
         private const val MAX_GAME_SPEED = 25f  // New constant to cap max speed
+
+        // Preference keys
+        private const val PREFS_NAME = "game_prefs"
+        private const val KEY_HIGH_SCORE = "high_score"
+        private const val KEY_SOUND_ENABLED = "sound_enabled"
+        private const val KEY_VIBRATION_ENABLED = "vibration_enabled"
+        private const val KEY_ALLOW_ROTATION = "allow_rotation"
     }
+
+    // SharedPreferences for persistent storage
+    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     // Game status
     val isGameActive = mutableStateOf(false)
 
     // Orientation preference - using a private MutableLiveData with public accessor methods
-    private val allowRotation = MutableLiveData(false)
+    private val allowRotation = MutableLiveData(loadAllowRotation())
 
     // Scoring
     val score = mutableStateOf(0)
     val finalScore = mutableStateOf(0)
-    val highScore = mutableStateOf(0)
+    val highScore = mutableStateOf(loadHighScore())
 
     // Achievement tracking
     private val _achievedHighScores = mutableListOf<Int>()
@@ -54,9 +66,18 @@ class GameState {
     // Current combo counter
     val currentCombo = mutableStateOf(0)
 
-    // Game settings
-    val soundEnabled = mutableStateOf(true)
-    val vibrationEnabled = mutableStateOf(true)
+    // Game settings - Load from SharedPreferences
+    val soundEnabled = mutableStateOf(loadSoundSetting())
+    val vibrationEnabled = mutableStateOf(loadVibrationSetting())
+
+    // Private methods to load settings from SharedPreferences
+    private fun loadHighScore(): Int = prefs.getInt(KEY_HIGH_SCORE, 0)
+
+    private fun loadSoundSetting(): Boolean = prefs.getBoolean(KEY_SOUND_ENABLED, true)
+
+    private fun loadVibrationSetting(): Boolean = prefs.getBoolean(KEY_VIBRATION_ENABLED, true)
+
+    private fun loadAllowRotation(): Boolean = prefs.getBoolean(KEY_ALLOW_ROTATION, false)
 
     /**
      * Get the allow rotation value
@@ -66,10 +87,28 @@ class GameState {
     }
 
     /**
-     * Set allow rotation value
+     * Set allow rotation value and save to preferences
      */
     fun setAllowRotation(allow: Boolean) {
+        prefs.edit().putBoolean(KEY_ALLOW_ROTATION, allow).apply()
         allowRotation.value = allow
+        Log.d(TAG, "Allow rotation set to: $allow and saved to preferences")
+    }
+
+    /**
+     * Save sound setting to preferences
+     */
+    fun saveSoundSetting(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SOUND_ENABLED, enabled).apply()
+        Log.d(TAG, "Sound setting saved: $enabled")
+    }
+
+    /**
+     * Save vibration setting to preferences
+     */
+    fun saveVibrationSetting(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_VIBRATION_ENABLED, enabled).apply()
+        Log.d(TAG, "Vibration setting saved: $enabled")
     }
 
     /**
@@ -167,7 +206,11 @@ class GameState {
         if (newScore > highScore.value) {
             highScore.value = newScore
             _achievedHighScores.add(newScore)
-            Log.d(TAG, "New high score: ${highScore.value}")
+
+            // Save high score to preferences
+            prefs.edit().putInt(KEY_HIGH_SCORE, newScore).apply()
+
+            Log.d(TAG, "New high score: ${highScore.value} saved to preferences")
         }
     }
 
@@ -243,7 +286,11 @@ class GameState {
         if (finalScore.value > highScore.value) {
             highScore.value = finalScore.value
             _achievedHighScores.add(finalScore.value)
-            Log.d(TAG, "High score updated to: ${highScore.value}")
+
+            // Save high score to preferences
+            prefs.edit().putInt(KEY_HIGH_SCORE, finalScore.value).apply()
+
+            Log.d(TAG, "High score updated to: ${highScore.value} and saved to preferences")
         }
     }
 
@@ -252,6 +299,10 @@ class GameState {
      */
     fun toggleSound() {
         soundEnabled.value = !soundEnabled.value
+
+        // Save to preferences
+        saveSoundSetting(soundEnabled.value)
+
         Log.d(TAG, "Sound ${if (soundEnabled.value) "enabled" else "disabled"}")
     }
 
@@ -260,6 +311,10 @@ class GameState {
      */
     fun toggleVibration() {
         vibrationEnabled.value = !vibrationEnabled.value
+
+        // Save to preferences
+        saveVibrationSetting(vibrationEnabled.value)
+
         Log.d(TAG, "Vibration ${if (vibrationEnabled.value) "enabled" else "disabled"}")
     }
 
