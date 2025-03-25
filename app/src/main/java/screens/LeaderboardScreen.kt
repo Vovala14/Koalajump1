@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +22,7 @@ import androidx.navigation.NavController
 import com.lavrik.koalajump.GameState
 
 /**
- * Leaderboard screen showing high scores
+ * Leaderboard screen showing high scores - with fixes for landscape mode
  */
 @Composable
 fun LeaderboardScreen(
@@ -33,6 +35,9 @@ fun LeaderboardScreen(
     val isPortrait = remember(configuration) {
         configuration.screenHeightDp > configuration.screenWidthDp
     }
+
+    // Add scroll state for landscape mode
+    val scrollState = rememberScrollState()
 
     // Create placeholder scores for now
     // Will be replaced with real data from GameInterface in the future
@@ -68,10 +73,11 @@ fun LeaderboardScreen(
             .background(brush = backgroundGradient),
         contentAlignment = Alignment.Center
     ) {
-        // Main content card
+        // Main content card with adjusted sizing
         Card(
             modifier = Modifier
                 .width(if (isPortrait) 320.dp else 500.dp)
+                .heightIn(max = if (isPortrait) 600.dp else 320.dp) // Limit height in landscape
                 .padding(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = Color.White
@@ -81,16 +87,21 @@ fun LeaderboardScreen(
             )
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier
+                    .padding(16.dp)
+                    .then(
+                        if (!isPortrait) Modifier.verticalScroll(scrollState)
+                        else Modifier
+                    ),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header
                 Text(
                     text = "Leaderboard",
-                    fontSize = 28.sp,
+                    fontSize = if (isPortrait) 28.sp else 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF673AB7),
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = if (isPortrait) 16.dp else 8.dp)
                 )
 
                 if (scores.isNotEmpty()) {
@@ -108,15 +119,15 @@ fun LeaderboardScreen(
                     ) {
                         Text(
                             text = "Rank",
-                            fontSize = 16.sp,
+                            fontSize = if (isPortrait) 16.sp else 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(0.8f)
                         )
 
                         Text(
                             text = "Player",
-                            fontSize = 16.sp,
+                            fontSize = if (isPortrait) 16.sp else 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             textAlign = TextAlign.Start,
@@ -125,7 +136,7 @@ fun LeaderboardScreen(
 
                         Text(
                             text = "Score",
-                            fontSize = 16.sp,
+                            fontSize = if (isPortrait) 16.sp else 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             textAlign = TextAlign.End,
@@ -135,7 +146,7 @@ fun LeaderboardScreen(
                         if (!isPortrait) {
                             Text(
                                 text = "Date",
-                                fontSize = 16.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
                                 textAlign = TextAlign.End,
@@ -144,19 +155,37 @@ fun LeaderboardScreen(
                         }
                     }
 
-                    // Scores list
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(240.dp)
-                    ) {
-                        itemsIndexed(scores) { index, score ->
-                            ScoreRow(
-                                rank = index + 1,
-                                score = score,
-                                isPortrait = isPortrait,
-                                isCurrentUser = score.playerName == "You"
-                            )
+                    // Scores list - adjust height for different orientations
+                    if (isPortrait) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(240.dp)
+                        ) {
+                            itemsIndexed(scores) { index, score ->
+                                ScoreRow(
+                                    rank = index + 1,
+                                    score = score,
+                                    isPortrait = isPortrait,
+                                    isCurrentUser = score.playerName == "You"
+                                )
+                            }
+                        }
+                    } else {
+                        // In landscape, use a smaller height for the list
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp) // Smaller height for landscape
+                        ) {
+                            itemsIndexed(scores) { index, score ->
+                                ScoreRow(
+                                    rank = index + 1,
+                                    score = score,
+                                    isPortrait = isPortrait,
+                                    isCurrentUser = score.playerName == "You"
+                                )
+                            }
                         }
                     }
                 } else {
@@ -164,12 +193,12 @@ fun LeaderboardScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp),
+                            .height(if (isPortrait) 200.dp else 100.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "No scores yet!\nStart playing to set a high score.",
-                            fontSize = 18.sp,
+                            fontSize = if (isPortrait) 18.sp else 16.sp,
                             color = Color.Gray,
                             textAlign = TextAlign.Center
                         )
@@ -178,10 +207,12 @@ fun LeaderboardScreen(
 
                 // Your best score
                 if (gameState.highScore.value > 0) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(if (isPortrait) 16.dp else 8.dp))
 
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 80.dp), // Ensure minimum height
                         colors = CardDefaults.cardColors(
                             containerColor = Color(0xFFE8EAF6)
                         )
@@ -189,19 +220,19 @@ fun LeaderboardScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(if (isPortrait) 16.dp else 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
                                 text = "Your Best Score",
-                                fontSize = 16.sp,
+                                fontSize = if (isPortrait) 16.sp else 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF3F51B5)
                             )
 
                             Text(
                                 text = "${gameState.highScore.value}",
-                                fontSize = 28.sp,
+                                fontSize = if (isPortrait) 28.sp else 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF3F51B5)
                             )
@@ -209,19 +240,21 @@ fun LeaderboardScreen(
                     }
                 }
 
-                // Close button
-                Spacer(modifier = Modifier.height(24.dp))
+                // Close button - adjusted for landscape
+                Spacer(modifier = Modifier.height(if (isPortrait) 24.dp else 12.dp))
 
                 Button(
                     onClick = onClose,
-                    modifier = Modifier.width(200.dp),
+                    modifier = Modifier
+                        .width(if (isPortrait) 200.dp else 140.dp)
+                        .height(48.dp), // Reduced height slightly
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF673AB7)
                     )
                 ) {
                     Text(
                         text = "Back",
-                        fontSize = 18.sp,
+                        fontSize = if (isPortrait) 18.sp else 16.sp,
                         color = Color.White
                     )
                 }
@@ -240,7 +273,7 @@ data class Score(
 )
 
 /**
- * Row in the leaderboard for a single score
+ * Row in the leaderboard for a single score - adjusted for landscape mode
  */
 @Composable
 fun ScoreRow(
@@ -268,23 +301,23 @@ fun ScoreRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(backgroundColor)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = if (isPortrait) 12.dp else 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Rank with medal color for top 3
         Box(
             modifier = Modifier
-                .size(28.dp)
+                .size(if (isPortrait) 28.dp else 24.dp)
                 .background(
                     color = if (rank <= 3) medalColor else Color.LightGray,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(if (isPortrait) 14.dp else 12.dp)
                 ),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "$rank",
-                fontSize = 14.sp,
+                fontSize = if (isPortrait) 14.sp else 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (rank <= 3) Color.White else Color.Black
             )
@@ -293,7 +326,7 @@ fun ScoreRow(
         // Player name
         Text(
             text = score.playerName,
-            fontSize = 16.sp,
+            fontSize = if (isPortrait) 16.sp else 14.sp,
             fontWeight = if (isCurrentUser) FontWeight.Bold else FontWeight.Normal,
             color = if (isCurrentUser) Color(0xFF3F51B5) else Color.Black,
             textAlign = TextAlign.Start,
@@ -305,7 +338,7 @@ fun ScoreRow(
         // Score
         Text(
             text = "${score.score}",
-            fontSize = 16.sp,
+            fontSize = if (isPortrait) 16.sp else 14.sp,
             fontWeight = FontWeight.Bold,
             color = if (isCurrentUser) Color(0xFF3F51B5) else Color.Black,
             textAlign = TextAlign.End,
@@ -316,7 +349,7 @@ fun ScoreRow(
         if (!isPortrait) {
             Text(
                 text = score.date,
-                fontSize = 14.sp,
+                fontSize = 12.sp,
                 color = Color.Gray,
                 textAlign = TextAlign.End,
                 modifier = Modifier.weight(1f)

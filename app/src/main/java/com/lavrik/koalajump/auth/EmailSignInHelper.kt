@@ -8,6 +8,12 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 /**
  * Helper class for Email Sign-In integration
@@ -19,6 +25,8 @@ class EmailSignInHelper(private val context: Context) {
     }
 
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
     // Callback interfaces
     interface OnSignInSuccessListener {
@@ -91,6 +99,12 @@ class EmailSignInHelper(private val context: Context) {
             .addOnSuccessListener {
                 Log.d(TAG, "signInWithEmail:success")
                 val user = auth.currentUser
+
+                // Save user data to Firestore for future reference
+                user?.let { firebaseUser ->
+                    saveUserToFirestore(firebaseUser.uid, firebaseUser.displayName ?: "Player", firebaseUser.email ?: "", firebaseUser.photoUrl?.toString())
+                }
+
                 onSignInSuccessListener?.onSignInSuccess(
                     user?.displayName,
                     user?.photoUrl?.toString()
@@ -140,6 +154,12 @@ class EmailSignInHelper(private val context: Context) {
                 user?.updateProfile(profileUpdates)
                     ?.addOnSuccessListener {
                         Log.d(TAG, "User profile updated with display name")
+
+                        // Save user data to Firestore
+                        user.let { firebaseUser ->
+                            saveUserToFirestore(firebaseUser.uid, displayName, email, null)
+                        }
+
                         onSignUpSuccessListener?.onSignUpSuccess(email)
                     }
                     ?.addOnFailureListener { e ->
@@ -187,6 +207,57 @@ class EmailSignInHelper(private val context: Context) {
                 Log.w(TAG, "Failed to send password reset email", e)
                 onFailure("Failed to send reset email: ${e.message}")
             }
+    }
+
+    /**
+     * Save user info to Firestore
+     */
+    private fun saveUserToFirestore(uid: String, displayName: String, email: String, photoUrl: String?) {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val userData = hashMapOf(
+                    "displayName" to displayName,
+                    "email" to email,
+                    "photoUrl" to (photoUrl ?: ""),
+                    "lastSignIn" to System.currentTimeMillis(),
+                    "totalSignIns" to 1
+                )
+
+                // First check if the user already exists
+                try {
+                    val userDocument = db.collection("users").document(uid).get()
+
+                    // Use Task's addOnSuccessListener instead of await
+                    userDocument.addOnSuccessListener { document ->
+                        if (document.exists()) {
+                            // Update existing user
+                            val updates = hashMapOf<String, Any>(
+                                "lastSignIn" to System.currentTimeMillis(),
+                                "totalSignIns" to (document.getLong("totalSignIns") ?: 0) + 1
+                            )
+
+                            // Only update display name if it has changed
+                            if (displayName != document.getString("displayName")) {
+                                updates["displayName"] = displayName
+                            }
+
+                            db.collection("users").document(uid).update(updates)
+                            Log.d(TAG, "User document updated")
+                        } else {
+                            // Create new user document
+                            db.collection("users").document(uid).set(userData)
+                            Log.d(TAG, "User document created")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error checking user document", e)
+                    // Fallback to just creating the document
+                    db.collection("users").document(uid).set(userData)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving user to Firestore", e)
+            }
+        }
     }
 
     /**

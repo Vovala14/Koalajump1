@@ -1,79 +1,82 @@
 package com.lavrik.koalajump.utils
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.SoundPool
 import android.util.Log
 import com.lavrik.koalajump.R
 
 /**
- * Simplified sound manager that works reliably with MP3 files
+ * Manages sound effects for the game
  */
 class SoundManager(private val context: Context) {
     companion object {
         private const val TAG = "SoundManager"
     }
 
-    // MediaPlayer instances for each sound
-    private var jumpSound: MediaPlayer? = null
-    private var collectSound: MediaPlayer? = null
-    private var hitSound: MediaPlayer? = null
-    private var gameOverSound: MediaPlayer? = null
+    // Sound pool for short sound effects
+    private val soundPool: SoundPool by lazy {
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
 
-    // Sound settings
+        SoundPool.Builder()
+            .setMaxStreams(5)
+            .setAudioAttributes(attributes)
+            .build()
+    }
+
+    // MediaPlayer for longer sounds like background music or game over
+    private var gameOverPlayer: MediaPlayer? = null
+
+    // Sound IDs
+    private var jumpSoundId: Int = -1
+    private var collectSoundId: Int = -1
+    private var hitSoundId: Int = -1
+
+    // State
     private var soundEnabled = true
 
     init {
-        preloadSounds()
-    }
-
-    /**
-     * Preload all game sounds using MediaPlayer
-     */
-    private fun preloadSounds() {
         try {
-            // Create MediaPlayers for each sound
-            if (resourceExists(R.raw.jump)) {
-                jumpSound = MediaPlayer.create(context, R.raw.jump).apply {
-                    setOnCompletionListener { it.seekTo(0) }
-                }
-                Log.d(TAG, "Jump sound loaded")
-            }
+            // Load sound effects
+            jumpSoundId = soundPool.load(context, R.raw.jump, 1)
+            collectSoundId = soundPool.load(context, R.raw.collect, 1)
+            hitSoundId = soundPool.load(context, R.raw.hit, 1)
 
-            if (resourceExists(R.raw.collect)) {
-                collectSound = MediaPlayer.create(context, R.raw.collect).apply {
-                    setOnCompletionListener { it.seekTo(0) }
-                }
-                Log.d(TAG, "Collect sound loaded")
-            }
+            // Pre-load the game over sound (but don't play it yet)
+            prepareGameOverSound()
 
-            if (resourceExists(R.raw.hit)) {
-                hitSound = MediaPlayer.create(context, R.raw.hit).apply {
-                    setOnCompletionListener { it.seekTo(0) }
-                }
-                Log.d(TAG, "Hit sound loaded")
-            }
-
-            if (resourceExists(R.raw.game_over)) {
-                gameOverSound = MediaPlayer.create(context, R.raw.game_over).apply {
-                    setOnCompletionListener { it.seekTo(0) }
-                }
-                Log.d(TAG, "Game over sound loaded")
-            }
+            Log.d(TAG, "Sound effects loaded successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading sounds: ${e.message}")
+            Log.e(TAG, "Error loading sound effects: ${e.message}")
         }
     }
 
     /**
-     * Check if a resource exists
+     * Prepare the game over sound to minimize delay when playing
      */
-    private fun resourceExists(resourceId: Int): Boolean {
-        return try {
-            context.resources.getResourceName(resourceId)
-            true
+    private fun prepareGameOverSound() {
+        try {
+            // Release any existing player first
+            gameOverPlayer?.release()
+
+            // Create a new player for the game over sound
+            gameOverPlayer = MediaPlayer.create(context, R.raw.game_over)
+
+            // Set to play only once
+            gameOverPlayer?.isLooping = false
+
+            // Set up completion listener to release resources
+            gameOverPlayer?.setOnCompletionListener {
+                it.reset()
+            }
+
+            Log.d(TAG, "Game over sound prepared successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Resource not found: $resourceId")
-            false
+            Log.e(TAG, "Error preparing game over sound: ${e.message}")
         }
     }
 
@@ -81,70 +84,75 @@ class SoundManager(private val context: Context) {
      * Play jump sound effect
      */
     fun playJumpSound() {
-        playSound(jumpSound)
+        if (soundEnabled) {
+            soundPool.play(jumpSoundId, 1f, 1f, 1, 0, 1f)
+        }
     }
 
     /**
      * Play collect sound effect
      */
     fun playCollectSound() {
-        playSound(collectSound)
+        if (soundEnabled) {
+            soundPool.play(collectSoundId, 1f, 1f, 1, 0, 1f)
+        }
     }
 
     /**
      * Play hit sound effect
      */
     fun playHitSound() {
-        playSound(hitSound)
-    }
-
-    /**
-     * Play game over sound effect
-     */
-    fun playGameOverSound() {
-        playSound(gameOverSound)
-    }
-
-    /**
-     * Play a sound using MediaPlayer
-     */
-    private fun playSound(player: MediaPlayer?) {
-        if (!soundEnabled || player == null) return
-
-        try {
-            if (player.isPlaying) {
-                player.seekTo(0)
-            } else {
-                player.start()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error playing sound: ${e.message}")
+        if (soundEnabled) {
+            soundPool.play(hitSoundId, 1f, 1f, 1, 0, 1f)
         }
     }
 
     /**
-     * Enable or disable sounds
+     * Play game over sound effect - plays once when all lives are lost
      */
-    fun setSoundEnabled(enabled: Boolean) {
-        soundEnabled = enabled
-        Log.d(TAG, "Sound ${if (enabled) "enabled" else "disabled"}")
+    fun playGameOverSound() {
+        if (soundEnabled && gameOverPlayer != null) {
+            try {
+                // Make sure we're not already playing
+                if (gameOverPlayer?.isPlaying == true) {
+                    gameOverPlayer?.stop()
+                    gameOverPlayer?.reset()
+                    prepareGameOverSound()
+                }
+
+                // Play the game over sound
+                gameOverPlayer?.start()
+                Log.d(TAG, "Game over sound playing")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error playing game over sound: ${e.message}")
+
+                // Try to recreate the player for next time
+                prepareGameOverSound()
+            }
+        }
     }
 
     /**
-     * Release all sound resources
+     * Enable or disable sound effects
+     */
+    fun setSoundEnabled(enabled: Boolean) {
+        Log.d(TAG, "Sound ${if (enabled) "enabled" else "disabled"}")
+        soundEnabled = enabled
+
+        // If sound is disabled, stop any ongoing game over sound
+        if (!enabled && gameOverPlayer?.isPlaying == true) {
+            gameOverPlayer?.stop()
+        }
+    }
+
+    /**
+     * Release resources
      */
     fun release() {
         try {
-            jumpSound?.release()
-            collectSound?.release()
-            hitSound?.release()
-            gameOverSound?.release()
-
-            jumpSound = null
-            collectSound = null
-            hitSound = null
-            gameOverSound = null
-
+            soundPool.release()
+            gameOverPlayer?.release()
+            gameOverPlayer = null
             Log.d(TAG, "Sound resources released")
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing sound resources: ${e.message}")

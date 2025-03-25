@@ -16,11 +16,12 @@ import java.io.InputStream
 
 /**
  * Animated koala character using a standard GIF animation
+ * With improved landscape positioning
  */
 class AnimatedKoala(
     private val context: Context,
-    val screenWidth: Float,
-    val screenHeight: Float,
+    var screenWidth: Float,  // Changed from val to var to allow updates
+    var screenHeight: Float, // Changed from val to var to allow updates
     var isPortrait: Boolean = true
 ) {
     companion object {
@@ -28,12 +29,20 @@ class AnimatedKoala(
         private const val HITBOX_REDUCTION_PERCENT = 0.15f
 
         // Physics constants - adjusted for 50% larger koala
-        private const val PORTRAIT_JUMP_VELOCITY = -23.5f // Adjusted for larger koala
-        private const val LANDSCAPE_JUMP_VELOCITY = -23f // Adjusted for larger koala
-        private const val PORTRAIT_GRAVITY = 1.8f // Adjusted for larger koala
-        private const val LANDSCAPE_GRAVITY = 1.5f // Adjusted for larger koala
-        private const val PORTRAIT_GROUND_RATIO = 0.78f
-        private const val LANDSCAPE_GROUND_RATIO = 0.73f
+        private const val PORTRAIT_JUMP_VELOCITY = -23.5f
+        private const val LANDSCAPE_JUMP_VELOCITY = -23f
+        private const val PORTRAIT_GRAVITY = 1.8f
+        private const val LANDSCAPE_GRAVITY = 1.5f
+
+        // Updated ground ratio values for better positioning
+        private const val PORTRAIT_GROUND_RATIO = 0.78f    // 78% of screen height
+
+        // FIXED: Reduced from 0.68f to 0.60f for better landscape position
+        private const val LANDSCAPE_GROUND_RATIO = 0.77f
+
+        // FIXED: Add horizontal position constants for better control
+        private const val PORTRAIT_X_RATIO = 0.25f         // 25% from left in portrait
+        private const val LANDSCAPE_X_RATIO = 0.20f        // 20% from left in landscape
 
         // Fixed size dimensions - increased by 50%
         private const val TARGET_WIDTH = 83 // Increased from 55 to 83 (50% larger)
@@ -55,7 +64,7 @@ class AnimatedKoala(
     var isJumping = false
     private var jumpVelocity = if (isPortrait) PORTRAIT_JUMP_VELOCITY else LANDSCAPE_JUMP_VELOCITY
     private var gravity = if (isPortrait) PORTRAIT_GRAVITY else LANDSCAPE_GRAVITY
-    private var groundY: Float
+    var groundY: Float // Changed to var to access from outside
 
     // Power-up state
     var isPoweredUp = false
@@ -87,11 +96,11 @@ class AnimatedKoala(
             koalaAnimation = null
         }
 
-        // Position the koala
+        // FIXED: Improved horizontal positioning ratio
         x = if (isPortrait) {
-            screenWidth / 4f - width / 2f
+            screenWidth * PORTRAIT_X_RATIO
         } else {
-            screenWidth * 0.15f
+            screenWidth * LANDSCAPE_X_RATIO
         }
 
         // Set ground Y position with proper adjustment for scaled height
@@ -101,6 +110,8 @@ class AnimatedKoala(
             screenHeight * LANDSCAPE_GROUND_RATIO - height
         }
         y = groundY
+
+        Log.d(TAG, "Koala initialized at x=$x, y=$y, groundY=$groundY, screenHeight=$screenHeight, orientation=${if(isPortrait) "portrait" else "landscape"}")
     }
 
     /**
@@ -223,28 +234,53 @@ class AnimatedKoala(
     }
 
     /**
-     * Update orientation settings
+     * Update position for new orientation - ensures koala stays in correct position
+     * FIXED: Improved landscape positioning
      */
-    fun updateOrientation(portrait: Boolean) {
-        isPortrait = portrait
-
-        // Reposition koala based on new orientation
+    fun updatePositionForNewOrientation() {
+        // FIXED: Reposition koala based on screen dimensions with improved ratios
         x = if (isPortrait) {
-            screenWidth / 4f - width / 2f
+            screenWidth * PORTRAIT_X_RATIO
         } else {
-            screenWidth * 0.15f
+            screenWidth * LANDSCAPE_X_RATIO
         }
 
-        // Update ground level with proper adjustment for height
+        // Recalculate ground position with more precise ratio
         groundY = if (isPortrait) {
             screenHeight * PORTRAIT_GROUND_RATIO - height
         } else {
             screenHeight * LANDSCAPE_GROUND_RATIO - height
         }
 
-        // Reset jump parameters for new orientation
+        // Explicitly log the ground position for debugging
+        Log.d(TAG, "Ground position updated: $groundY, screen height: $screenHeight, orientation: ${if(isPortrait) "portrait" else "landscape"}")
+
+        // If not actively jumping, place on ground
+        if (!isJumping) {
+            y = groundY
+            Log.d(TAG, "Koala placed on ground at y=$y")
+        } else {
+            // If jumping, maintain relative height position
+            val jumpHeightPercent = (groundY - y) / (groundY - (y + jumpVelocity * 10))
+            y = groundY - (jumpHeightPercent * groundY * 0.3f)
+        }
+    }
+
+    /**
+     * Update orientation settings with improved handling for transitions
+     */
+    fun updateOrientation(portrait: Boolean) {
+        val oldPortrait = isPortrait
+        isPortrait = portrait
+
+        // Update physics parameters for new orientation
         jumpVelocity = if (isPortrait) PORTRAIT_JUMP_VELOCITY else LANDSCAPE_JUMP_VELOCITY
         gravity = if (isPortrait) PORTRAIT_GRAVITY else LANDSCAPE_GRAVITY
+
+        // Only reposition if orientation actually changed
+        if (oldPortrait != portrait) {
+            updatePositionForNewOrientation()
+        }
     }
 
     /**

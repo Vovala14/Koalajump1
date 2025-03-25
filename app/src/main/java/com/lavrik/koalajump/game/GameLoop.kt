@@ -35,6 +35,7 @@ class GameLoop(
     private var lives = 3
     private var currentLevel = 1
     private var isGameActive = true
+    private var isGameOver = false  // New flag to track game over state
 
     // Koala position and movement
     private var koalaX = 0f
@@ -65,6 +66,8 @@ class GameLoop(
         score = 0
         lives = 3
         currentLevel = 1
+        isGameOver = false
+        isGameActive = true
 
         // Set up koala position
         koalaX = screenWidth / 4f
@@ -84,6 +87,9 @@ class GameLoop(
             Triple(screenWidth + 1000f, groundY - 200f, true), // 20% lower (was 250f)
             Triple(screenWidth + 1400f, groundY - 120f, true)  // 20% lower (was 150f)
         )
+
+        // Make sure game state is consistent
+        gameState.resetForNewGame()
     }
 
     /**
@@ -91,30 +97,89 @@ class GameLoop(
      */
     suspend fun start(onGameOver: () -> Unit) {
         isGameActive = true
+        isGameOver = false
         gameState.isGameActive.value = true
 
         // Game loop
-        while (isGameActive && gameState.isGameActive.value) {
-            // Update jumping physics
-            updateJumpPhysics()
+        while (isGameActive && gameState.isGameActive.value && !isGameOver) {
+            try {
+                // Update jumping physics
+                updateJumpPhysics()
 
-            // Move obstacles
-            moveObstacles()
+                // Move obstacles
+                moveObstacles()
 
-            // Move collectibles
-            moveCollectibles()
+                // Move collectibles
+                moveCollectibles()
 
-            // Check for collectible collisions - simplified
-            checkCollectibleCollisions()
+                // Check for collectible collisions - simplified
+                checkCollectibleCollisions()
 
-            // Update game state values
-            gameState.score.value = score
+                // Update game state values
+                gameState.score.value = score
+                gameState.lives.value = lives
 
-            // Check for environment changes based on score
-            checkForEnvironmentChange()
+                // Check for environment changes based on score
+                checkForEnvironmentChange()
+
+                // Check for game over
+                if (lives <= 0 && !isGameOver) {
+                    isGameOver = true
+                    isGameActive = false
+                    gameState.isGameActive.value = false
+
+                    // Update final score
+                    gameState.updateScore(score)
+                    gameState.endGame()
+
+                    Log.d(TAG, "Game over detected in game loop - calling onGameOver callback")
+
+                    // Delay slightly to ensure state updates
+                    delay(100)
+
+                    // Call the game over callback on the main thread
+                    try {
+                        // Instead of using withContext which requires an additional import,
+                        // we'll use the existing coroutineScope to launch on the Main dispatcher
+                        coroutineScope.launch(Dispatchers.Main) {
+                            try {
+                                onGameOver()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error in onGameOver callback: ${e.message}", e)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error calling game over callback: ${e.message}", e)
+                    }
+
+                    break
+                }
+            } catch (e: Exception) {
+                // Catch any exceptions in the game loop to prevent crashes
+                Log.e(TAG, "Error in game loop: ${e.message}", e)
+            }
 
             // Add delay to control frame rate
             delay(FRAME_DELAY)
+        }
+
+        // Double-check game over condition when exiting loop
+        if (lives <= 0 && !gameState.gameOverState) {
+            gameState.updateScore(score)
+            gameState.endGame()
+
+            try {
+                // Again using coroutineScope.launch instead of withContext
+                coroutineScope.launch(Dispatchers.Main) {
+                    try {
+                        onGameOver()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in final onGameOver callback: ${e.message}", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling final game over callback: ${e.message}", e)
+            }
         }
     }
 
@@ -247,6 +312,32 @@ class GameLoop(
     }
 
     /**
+     * Handle collision with obstacles
+     */
+    fun handleCollision() {
+        // Decrease lives
+        lives--
+        gameState.lives.value = lives
+
+        // Play hit sound
+        soundManager.playHitSound()
+
+        // Check for game over
+        if (lives <= 0 && !isGameOver) {
+            // Mark game as over
+            isGameOver = true
+            isGameActive = false
+            gameState.isGameActive.value = false
+
+            // Update score in game state
+            gameState.updateScore(score)
+            gameState.endGame()
+
+            Log.d(TAG, "Game over in handleCollision - lives: $lives")
+        }
+    }
+
+    /**
      * Get the current koala Y position
      */
     fun getKoalaY(): Float = koalaY
@@ -272,6 +363,21 @@ class GameLoop(
      * Get the current collectibles
      */
     fun getCollectibles(): Array<Triple<Float, Float, Boolean>> = collectibles
+
+    /**
+     * Force end the game and navigate to game over
+     */
+    fun forceGameOver() {
+        if (!isGameOver) {
+            lives = 0
+            gameState.lives.value = 0
+            isGameOver = true
+            isGameActive = false
+            gameState.isGameActive.value = false
+            gameState.updateScore(score)
+            gameState.endGame()
+        }
+    }
 
     /**
      * Stop the game loop

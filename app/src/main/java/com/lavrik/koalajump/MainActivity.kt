@@ -17,9 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.lavrik.koalajump.screens.*
 import com.lavrik.koalajump.ui.components.KoalaJumpTheme
+
 
 /**
  * Main activity for the game
@@ -38,6 +40,9 @@ class MainActivity : ComponentActivity() {
 
     // Double back press to exit
     private var backPressedOnce = false
+
+    // Track current screen to manage rotation
+    private var currentScreen = "mainMenu"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +64,13 @@ class MainActivity : ComponentActivity() {
         // Initialize game state with context
         gameState = GameState(this)
 
+        // FIXED: Create GamePreferences instance and verify high score integrity
+        val gamePreferences = GamePreferences(this)
+        gamePreferences.verifyHighScore()
+
+        // Log the current high score for debugging
+        Log.d(TAG, "App started with high score: ${gameState.highScore.value}")
+
         // Check for first launch
         val prefs = getSharedPreferences("game_prefs", MODE_PRIVATE)
         val isFirstLaunch = prefs.getBoolean("first_launch", true)
@@ -75,20 +87,50 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     // Pass gameState and showTutorial flag to GameNavigation
-                    GameNavigation(gameState = gameState, showTutorial = isFirstLaunch)
+                    GameNavigation(
+                        gameState = gameState,
+                        showTutorial = isFirstLaunch,
+                        onScreenChange = { screen ->
+                            // Update current screen and handle rotation
+                            if (currentScreen != screen) {
+                                currentScreen = screen
+                                updateRotationBasedOnScreen(screen)
+                            }
+                        }
+                    )
                 }
             }
         }
 
-        // Update orientation based on initial setting
-        updateOrientation(gameState.getAllowRotation())
-
-        // Listen for orientation changes
+        // Listen for orientation changes but only apply them in main menu
         gameState.observeAllowRotation(this) { allowRotation ->
-            updateOrientation(allowRotation)
+            if (currentScreen == "mainMenu" && allowRotation) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                Log.d(TAG, "Main menu: Rotation enabled")
+            } else {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                Log.d(TAG, "Forcing portrait mode")
+            }
         }
 
         Log.d(TAG, "App started successfully")
+    }
+
+    /**
+     * Update orientation based on current screen - only allow rotation in main menu
+     */
+    private fun updateRotationBasedOnScreen(screen: String) {
+        Log.d(TAG, "Screen changed to: $screen")
+
+        if (screen == "mainMenu" && gameState.getAllowRotation()) {
+            // Only allow rotation in main menu if setting is enabled
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            Log.d(TAG, "Main menu: Rotation enabled")
+        } else {
+            // Force portrait for all other screens
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            Log.d(TAG, "Forcing portrait mode for screen: $screen")
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -97,24 +139,10 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Configuration changed, orientation: " +
                 if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait")
 
-        // If we're not allowing rotation, force back to portrait
-        if (!gameState.getAllowRotation() && newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+        // If not on main menu or rotation not allowed, force back to portrait
+        if (currentScreen != "mainMenu" || !gameState.getAllowRotation()) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
-
-    /**
-     * Update orientation based on user preference
-     */
-    private fun updateOrientation(allowRotation: Boolean) {
-        if (allowRotation) {
-            // FIXED: Use FULL_SENSOR instead of just SENSOR for better rotation handling
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-            Log.d(TAG, "Orientation unlocked - following sensor")
-        } else {
-            // Force portrait only
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            Log.d(TAG, "Orientation locked to portrait")
+            Log.d(TAG, "Forcing portrait mode after config change")
         }
     }
 
@@ -142,11 +170,26 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         performanceMonitor.start()
+
+        // Re-apply rotation settings when resuming
+        updateRotationBasedOnScreen(currentScreen)
     }
 
     override fun onPause() {
         super.onPause()
         performanceMonitor.stop()
+
+        // FIXED: Make sure high score is saved when app is paused
+        if (gameState.highScore.value > 0) {
+            val prefs = getSharedPreferences("game_prefs", MODE_PRIVATE)
+            prefs.edit().putInt("high_score", gameState.highScore.value).commit()
+
+            // Also save to backup
+            val backupPrefs = getSharedPreferences("backup_game_prefs", MODE_PRIVATE)
+            backupPrefs.edit().putInt("backup_high_score", gameState.highScore.value).commit()
+
+            Log.d(TAG, "High score backed up on pause: ${gameState.highScore.value}")
+        }
     }
 
     override fun onLowMemory() {
@@ -159,13 +202,27 @@ class MainActivity : ComponentActivity() {
  * Main navigation component for the game
  * @param gameState The central game state to pass to all screens
  * @param showTutorial Flag indicating if the tutorial should be shown
+ * @param onScreenChange Callback when navigation changes screens
  */
 @Composable
-fun GameNavigation(gameState: GameState, showTutorial: Boolean) {
+fun GameNavigation(
+    gameState: GameState,
+    showTutorial: Boolean,
+    onScreenChange: (String) -> Unit
+) {
     Log.d("GameNavigation", "Starting navigation")
 
     val navController = rememberNavController()
     val tutorialCompleted = remember { mutableStateOf(!showTutorial) }
+
+    // Track current navigation destination
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: "mainMenu"
+
+    // Monitor route changes
+    LaunchedEffect(currentRoute) {
+        onScreenChange(currentRoute)
+    }
 
     // Remember the navigation controller to pass with gameState
     SetupNavigation(navController, gameState, tutorialCompleted)
@@ -203,6 +260,10 @@ private fun SetupNavigation(
                     onShowLeaderboard = {
                         Log.d("Navigation", "Leaderboard button clicked")
                         navController.navigate("leaderboard")
+                    },
+                    onShowEnvironments = {
+                        Log.d("Navigation", "Environments Guide button clicked")
+                        navController.navigate("environments")
                     },
                     onToggleOrientation = { allowRotation ->
                         Log.d("Navigation", "Toggling orientation: allow=$allowRotation")
@@ -267,10 +328,23 @@ private fun SetupNavigation(
             )
         }
 
-        // SignInScreen for account creation and login
+        composable("environments") {
+            Log.d("Navigation", "Showing Environments Guide")
+            EnvironmentsGuideScreen(
+                navController = navController,
+                onClose = {
+                    Log.d("Navigation", "Environments Guide closed")
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // FIXED: Use correct reference to SignInScreen
         composable("signIn") {
             Log.d("Navigation", "Showing Sign In Screen")
-            SignInScreen(
+
+            // Use fully qualified name with the correct import
+            screens.SignInScreen(
                 gameState = gameState,
                 navController = navController,
                 onClose = {

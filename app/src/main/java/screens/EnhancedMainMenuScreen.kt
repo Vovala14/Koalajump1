@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lavrik.koalajump.GameState
@@ -27,6 +31,7 @@ fun EnhancedMainMenuScreen(
     gameState: GameState,
     onStartGame: () -> Unit,
     onShowLeaderboard: () -> Unit,
+    onShowEnvironments: () -> Unit,
     onToggleOrientation: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -37,6 +42,9 @@ fun EnhancedMainMenuScreen(
     val isPortrait = remember(configuration) {
         configuration.screenHeightDp > configuration.screenWidthDp
     }
+
+    // Add scroll state for landscape mode
+    val scrollState = rememberScrollState()
 
     // State for menu UI
     var menuState by remember { mutableStateOf<MenuState>(MenuState.Idle) }
@@ -57,72 +65,85 @@ fun EnhancedMainMenuScreen(
                         Color(0xFF5D8AA8)   // Deeper blue at bottom
                     )
                 )
-            ),
-        contentAlignment = Alignment.Center
+            )
     ) {
         // Add animated clouds to background
         AnimatedCloudsBackground()
 
         when (menuState) {
             MenuState.Idle, MenuState.Starting -> {
-                // Main menu content
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(if(isPortrait) 0.dp else 24.dp)
+                // Main menu content - use BoxWithConstraints to better position content
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Animated title without koala icon
-                    AnimatedTitle(isPortrait)
+                    val screenHeight = maxHeight
 
-                    Spacer(
-                        modifier = Modifier.height(
-                            if (isPortrait) 40.dp else 30.dp
-                        )
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(if(isPortrait) 16.dp else 8.dp)
+                            .then(
+                                if (!isPortrait) Modifier.verticalScroll(scrollState)
+                                else Modifier
+                            )
+                    ) {
+                        if (isPortrait) {
+                            // Portrait layout - move title up, high score more visible
+                            Spacer(modifier = Modifier.height(screenHeight * 0.07f)) // Space at top
 
-                    if (isPortrait) {
-                        // Portrait layout - Vertical buttons
-                        EnhancedMenuButton(
-                            text = "Start Game",
-                            onClick = {
-                                Log.d("MainMenuScreen", "Start Game button clicked")
-                                menuState = MenuState.Starting
-                                gameState.resetForNewGame()
-                                onStartGame()
-                            },
-                            enabled = menuState == MenuState.Idle,
-                            modifier = Modifier.width(220.dp)
-                        )
+                            // Animated title
+                            AnimatedTitle(isPortrait)
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                            // Add high score at the top if it exists
+                            if (gameState.highScore.value > 0) {
+                                Spacer(modifier = Modifier.height(16.dp))
 
-                        EnhancedMenuButton(
-                            text = "Leaderboard",
-                            onClick = {
-                                Log.d("MainMenuScreen", "Leaderboard button clicked")
-                                onShowLeaderboard()
-                            },
-                            enabled = menuState == MenuState.Idle,
-                            modifier = Modifier.width(220.dp)
-                        )
+                                // High score display - positioned higher
+                                Card(
+                                    modifier = Modifier
+                                        .width(200.dp)
+                                        .height(70.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = Color(0xBBFFFFFF)
+                                    ),
+                                    elevation = CardDefaults.cardElevation(
+                                        defaultElevation = 4.dp
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = "Best Score",
+                                            fontSize = 14.sp,
+                                            color = Color.Black
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${gameState.highScore.value}",
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Black,
+                                            maxLines = 1 // Ensure single line
+                                        )
+                                    }
+                                }
+                            }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                            // Add flexible spacing to push buttons lower
+                            Spacer(modifier = Modifier.height(screenHeight * 0.1f))
 
-                        EnhancedMenuButton(
-                            text = "Settings",
-                            onClick = {
-                                Log.d("MainMenuScreen", "Settings button clicked")
-                                menuState = MenuState.ShowingSettings
-                            },
-                            enabled = menuState == MenuState.Idle,
-                            modifier = Modifier.width(220.dp)
-                        )
-                    } else {
-                        // Landscape layout - Horizontal buttons
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                            modifier = Modifier.padding(top = 16.dp)
-                        ) {
-                            Column {
+                            // Game buttons
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
                                 EnhancedMenuButton(
                                     text = "Start Game",
                                     onClick = {
@@ -132,10 +153,8 @@ fun EnhancedMainMenuScreen(
                                         onStartGame()
                                     },
                                     enabled = menuState == MenuState.Idle,
-                                    modifier = Modifier.width(200.dp)
+                                    modifier = Modifier.width(220.dp)
                                 )
-
-                                Spacer(modifier = Modifier.height(12.dp))
 
                                 EnhancedMenuButton(
                                     text = "Leaderboard",
@@ -144,11 +163,19 @@ fun EnhancedMainMenuScreen(
                                         onShowLeaderboard()
                                     },
                                     enabled = menuState == MenuState.Idle,
-                                    modifier = Modifier.width(200.dp)
+                                    modifier = Modifier.width(220.dp)
                                 )
-                            }
 
-                            Column {
+                                EnhancedMenuButton(
+                                    text = "Environments",
+                                    onClick = {
+                                        Log.d("MainMenuScreen", "Environments button clicked")
+                                        onShowEnvironments()
+                                    },
+                                    enabled = menuState == MenuState.Idle,
+                                    modifier = Modifier.width(220.dp)
+                                )
+
                                 EnhancedMenuButton(
                                     text = "Settings",
                                     onClick = {
@@ -156,133 +183,182 @@ fun EnhancedMainMenuScreen(
                                         menuState = MenuState.ShowingSettings
                                     },
                                     enabled = menuState == MenuState.Idle,
-                                    modifier = Modifier.width(200.dp)
+                                    modifier = Modifier.width(220.dp)
                                 )
+                            }
 
-                                if (gameState.highScore.value > 0) {
-                                    Spacer(modifier = Modifier.height(12.dp))
+                            // Bottom space
+                            Spacer(modifier = Modifier.weight(1f, fill = true))
 
-                                    // Display high score if there is one
-                                    Card(
+                        } else {
+                            // Landscape layout - use row layout as before
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Animated title
+                            AnimatedTitle(isPortrait)
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Landscape layout - Horizontal buttons with improved layout
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp)
+                            ) {
+                                // First column - Game & Leaderboard
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    EnhancedMenuButton(
+                                        text = "Start Game",
+                                        onClick = {
+                                            Log.d("MainMenuScreen", "Start Game button clicked")
+                                            menuState = MenuState.Starting
+                                            gameState.resetForNewGame()
+                                            onStartGame()
+                                        },
+                                        enabled = menuState == MenuState.Idle,
+                                        modifier = Modifier.fillMaxWidth(0.95f)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    EnhancedMenuButton(
+                                        text = "Leaderboard",
+                                        onClick = {
+                                            Log.d("MainMenuScreen", "Leaderboard button clicked")
+                                            onShowLeaderboard()
+                                        },
+                                        enabled = menuState == MenuState.Idle,
+                                        modifier = Modifier.fillMaxWidth(0.95f)
+                                    )
+                                }
+
+                                // Second column - Environments & Settings
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    EnhancedMenuButton(
+                                        text = "Environments",
+                                        onClick = {
+                                            Log.d("MainMenuScreen", "Environments button clicked")
+                                            onShowEnvironments()
+                                        },
+                                        enabled = menuState == MenuState.Idle,
+                                        modifier = Modifier.fillMaxWidth(0.95f)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    EnhancedMenuButton(
+                                        text = "Settings",
+                                        onClick = {
+                                            Log.d("MainMenuScreen", "Settings button clicked")
+                                            menuState = MenuState.ShowingSettings
+                                        },
+                                        enabled = menuState == MenuState.Idle,
+                                        modifier = Modifier.fillMaxWidth(0.95f)
+                                    )
+                                }
+                            }
+
+                            // Additional info for landscape mode
+                            if (gameState.highScore.value > 0) {
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // High score display
+                                Card(
+                                    modifier = Modifier
+                                        .width(260.dp)
+                                        .height(70.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = Color(0xBBFFFFFF)
+                                    ),
+                                    elevation = CardDefaults.cardElevation(
+                                        defaultElevation = 4.dp
+                                    )
+                                ) {
+                                    Column(
                                         modifier = Modifier
-                                            .width(200.dp)
-                                            .height(70.dp), // FIXED: Increased height from 56.dp to 70.dp
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = Color(0xBBFFFFFF)
-                                        ),
-                                        elevation = CardDefaults.cardElevation(
-                                            defaultElevation = 4.dp
-                                        )
+                                            .fillMaxSize()
+                                            .padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
                                     ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(8.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(
-                                                text = "Best Score",
-                                                fontSize = 14.sp,
-                                                color = Color.Black
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "${gameState.highScore.value}",
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.Black,
-                                                maxLines = 1 // Ensure single line
-                                            )
-                                        }
+                                        Text(
+                                            text = "Best Score",
+                                            fontSize = 14.sp,
+                                            color = Color.Black
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${gameState.highScore.value}",
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Black,
+                                            maxLines = 1
+                                        )
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // Additional info for portrait mode
-                    if (isPortrait && gameState.highScore.value > 0) {
-                        Spacer(modifier = Modifier.height(32.dp))
-
-                        // High score display
-                        Card(
-                            modifier = Modifier
-                                .width(200.dp)
-                                .height(70.dp), // FIXED: Increased height from 56.dp to 70.dp
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xBBFFFFFF)
-                            ),
-                            elevation = CardDefaults.cardElevation(
-                                defaultElevation = 4.dp
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = "Best Score",
-                                    fontSize = 14.sp,
-                                    color = Color.Black
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "${gameState.highScore.value}",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Black,
-                                    maxLines = 1 // Ensure single line
-                                )
+                        // Starting game message
+                        if (menuState == MenuState.Starting) {
+                            LaunchedEffect(Unit) {
+                                delay(2000)
+                                menuState = MenuState.Idle
                             }
-                        }
-                    }
 
-                    // Use LaunchedEffect instead of DisposableEffect + Handler
-                    if (menuState == MenuState.Starting) {
-                        LaunchedEffect(Unit) {
-                            delay(2000)
-                            menuState = MenuState.Idle
-                        }
+                            if (isPortrait) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Starting game...",
-                            color = Color.White,
-                            fontSize = 16.sp
-                        )
+                            Text(
+                                text = "Starting game...",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
+                        }
                     }
                 }
             }
 
             MenuState.ShowingSettings -> {
                 // Settings panel
-                EnhancedSettingsPanel(
-                    allowRotation = allowRotation,
-                    soundEnabled = soundEnabled,
-                    vibrationEnabled = vibrationEnabled,
-                    onAllowRotationChanged = {
-                        allowRotation = it
-                        gameState.setAllowRotation(it)
-                        onToggleOrientation(it)
-                    },
-                    onSoundChanged = {
-                        soundEnabled = it
-                        gameState.soundEnabled.value = it
-                        gameState.saveSoundSetting(it) // FIXED: Save sound setting to preferences
-                    },
-                    onVibrationChanged = {
-                        vibrationEnabled = it
-                        gameState.vibrationEnabled.value = it
-                        gameState.saveVibrationSetting(it) // FIXED: Save vibration setting to preferences
-                    },
-                    onClose = {
-                        menuState = MenuState.Idle
-                    }
-                )
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    EnhancedSettingsPanel(
+                        allowRotation = allowRotation,
+                        soundEnabled = soundEnabled,
+                        vibrationEnabled = vibrationEnabled,
+                        isPortrait = isPortrait,
+                        onAllowRotationChanged = {
+                            allowRotation = it
+                            gameState.setAllowRotation(it)
+                            onToggleOrientation(it)
+                        },
+                        onSoundChanged = {
+                            soundEnabled = it
+                            gameState.soundEnabled.value = it
+                            gameState.saveSoundSetting(it)
+                        },
+                        onVibrationChanged = {
+                            vibrationEnabled = it
+                            gameState.vibrationEnabled.value = it
+                            gameState.saveVibrationSetting(it)
+                        },
+                        onClose = {
+                            menuState = MenuState.Idle
+                        }
+                    )
+                }
             }
         }
     }
@@ -311,12 +387,13 @@ private fun AnimatedTitle(isPortrait: Boolean) {
         label = "titleRotation"
     )
 
-    // Just the title text without any icon
+    // Just the title text without any icon, smaller in landscape
     Text(
         text = "Koala Jump",
-        fontSize = if (isPortrait) 40.sp else 48.sp,
+        fontSize = if (isPortrait) 40.sp else 36.sp,
         color = Color.White,
         fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
         style = androidx.compose.ui.text.TextStyle(
             shadow = androidx.compose.ui.graphics.Shadow(
                 color = Color(0x99000000),
@@ -347,7 +424,7 @@ private fun EnhancedMenuButton(
             onClick()
         },
         modifier = modifier
-            .height(60.dp)
+            .height(56.dp) // Slightly smaller in height
             .scale(if (isPressed) 0.95f else 1f)
             .graphicsLayer {
                 shadowElevation = if (isPressed) 0f else 8f
@@ -358,13 +435,15 @@ private fun EnhancedMenuButton(
             contentColor = Color.White,
             disabledContainerColor = Color(0xFF8BC34A)
         ),
-        border = null, // FIXED: Remove border to fix background color issue at corners
+        border = null,
         enabled = enabled
     ) {
         Text(
             text = text,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = 18.sp, // Slightly smaller font
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 
@@ -382,14 +461,19 @@ private fun EnhancedSettingsPanel(
     allowRotation: Boolean,
     soundEnabled: Boolean,
     vibrationEnabled: Boolean,
+    isPortrait: Boolean,
     onAllowRotationChanged: (Boolean) -> Unit,
     onSoundChanged: (Boolean) -> Unit,
     onVibrationChanged: (Boolean) -> Unit,
     onClose: () -> Unit
 ) {
+    // Use scrollable content for landscape mode
+    val scrollState = rememberScrollState()
+
     Card(
         modifier = Modifier
-            .width(320.dp)
+            .width(if (isPortrait) 320.dp else 400.dp)
+            .heightIn(max = if (isPortrait) 600.dp else 280.dp) // Limit height in landscape
             .padding(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
@@ -399,55 +483,115 @@ private fun EnhancedSettingsPanel(
         )
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier
+                .padding(16.dp)
+                .then(if (!isPortrait) Modifier.verticalScroll(scrollState) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "Settings",
-                fontSize = 28.sp,
+                fontSize = if (isPortrait) 28.sp else 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF4CAF50),
-                modifier = Modifier.padding(bottom = 24.dp)
+                modifier = Modifier.padding(bottom = if (isPortrait) 24.dp else 16.dp)
             )
 
-            // Settings toggles
-            EnhancedSettingToggle(
-                text = "Allow Rotation",
-                checked = allowRotation,
-                onToggle = onAllowRotationChanged
-            )
+            // Layout in landscape mode (horizontal)
+            if (!isPortrait) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // Settings toggles in column
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        EnhancedSettingToggle(
+                            text = "Allow Rotation",
+                            checked = allowRotation,
+                            onToggle = onAllowRotationChanged
+                        )
 
-            EnhancedSettingToggle(
-                text = "Sound Effects",
-                checked = soundEnabled,
-                onToggle = onSoundChanged
-            )
+                        EnhancedSettingToggle(
+                            text = "Sound Effects",
+                            checked = soundEnabled,
+                            onToggle = onSoundChanged
+                        )
 
-            EnhancedSettingToggle(
-                text = "Vibration",
-                checked = vibrationEnabled,
-                onToggle = onVibrationChanged
-            )
+                        EnhancedSettingToggle(
+                            text = "Vibration",
+                            checked = vibrationEnabled,
+                            onToggle = onVibrationChanged
+                        )
+                    }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Close button
-            Button(
-                onClick = onClose,
-                modifier = Modifier
-                    .width(160.dp)
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
-                ),
-                border = null // FIXED: Remove border to fix background color issue at corners
-            ) {
-                Text(
-                    text = "Done",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    // Done button on the right
+                    Column(
+                        modifier = Modifier
+                            .weight(0.6f)
+                            .padding(start = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Button(
+                            onClick = onClose,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF4CAF50)
+                            ),
+                            border = null
+                        ) {
+                            Text(
+                                text = "Done",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Portrait layout (vertical) - unchanged
+                EnhancedSettingToggle(
+                    text = "Allow Rotation",
+                    checked = allowRotation,
+                    onToggle = onAllowRotationChanged
                 )
+
+                EnhancedSettingToggle(
+                    text = "Sound Effects",
+                    checked = soundEnabled,
+                    onToggle = onSoundChanged
+                )
+
+                EnhancedSettingToggle(
+                    text = "Vibration",
+                    checked = vibrationEnabled,
+                    onToggle = onVibrationChanged
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Close button
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .width(160.dp)
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF4CAF50)
+                    ),
+                    border = null
+                ) {
+                    Text(
+                        text = "Done",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -462,15 +606,16 @@ private fun EnhancedSettingToggle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp),
+            .padding(vertical = 8.dp), // Reduced padding
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = text,
-            fontSize = 18.sp,
+            fontSize = 16.sp, // Slightly smaller font
             fontWeight = FontWeight.Medium,
-            color = Color.Black
+            color = Color.Black,
+            modifier = Modifier.weight(1f)
         )
 
         Switch(

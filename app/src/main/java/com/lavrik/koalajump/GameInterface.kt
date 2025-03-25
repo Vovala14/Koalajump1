@@ -147,6 +147,44 @@ class GameInterface(private val context: Context, private val activity: Componen
         }
     }
 
+    // Submit final score after game over
+    fun submitFinalScore(gameState: GameState) {
+        if (!isSignedIn) {
+            Log.d(TAG, "Cannot submit final score: User not signed in")
+            return
+        }
+
+        val finalScore = gameState.finalScore.value
+        val playerName = displayName ?: "Anonymous"
+
+        coroutineScope.launch {
+            try {
+                val scoreData = hashMapOf(
+                    "playerName" to playerName,
+                    "score" to finalScore,
+                    "timestamp" to System.currentTimeMillis(),
+                    "environment" to gameState.currentEnvironment.value.levelName,
+                    "level" to gameState.currentLevel.value,
+                    "uid" to uid
+                )
+
+                db.collection("high_scores")
+                    .add(scoreData)
+                    .await()
+
+                withContext(Dispatchers.Main) {
+                    Log.d(TAG, "Final score of $finalScore successfully submitted to leaderboard")
+                    onScoreSubmitted(finalScore)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error submitting final score", e)
+                withContext(Dispatchers.Main) {
+                    onScoreSubmitError("Error: ${e.message}")
+                }
+            }
+        }
+    }
+
     // Get high scores
     fun fetchHighScores(callback: (List<Map<String, Any>>) -> Unit) {
         coroutineScope.launch {

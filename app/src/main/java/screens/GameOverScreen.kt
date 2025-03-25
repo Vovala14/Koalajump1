@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,18 +25,10 @@ import com.lavrik.koalajump.GameState
 import com.lavrik.koalajump.ui.components.AnimatedCloudsBackground
 import kotlinx.coroutines.delay
 
-// Constants for UI elements
-private val TITLE_FONT_SIZE = 40.sp
-private val SCORE_BOX_SIZE = 120.dp
-private val SCORE_LABEL_SIZE = 16.sp
-private val SCORE_VALUE_SIZE = 32.sp
-private val HIGH_SCORE_SIZE = 20.sp
-private val BUTTON_HEIGHT = 56.dp
-private val BUTTON_FONT_SIZE = 18.sp
-private val LANDSCAPE_SCORE_BOX_SIZE = 100.dp
+private const val TAG = "GameOverScreen"
 
 /**
- * Enhanced Game over screen showing final score with beautiful visual effects
+ * Simplified GameOverScreen with only two working buttons, improved for landscape mode
  */
 @Composable
 fun GameOverScreen(
@@ -43,17 +37,8 @@ fun GameOverScreen(
     onMainMenu: () -> Unit,
     navController: NavController
 ) {
-    // Get score from game state
-    val finalScore = gameState.finalScore.value
-    val highScore = gameState.highScore.value
-
-    // Debug logging to troubleshoot
-    Log.d("GameOverScreen", "Final Score: $finalScore, High Score: $highScore")
-
-    // Animation states
-    var showScoreAnimation by remember { mutableStateOf(false) }
-    var showHighScoreAnimation by remember { mutableStateOf(false) }
-    var showButtons by remember { mutableStateOf(false) }
+    // Debug logging
+    Log.d(TAG, "GameOverScreen composing with score ${gameState.finalScore.value}")
 
     // Detect current orientation
     val configuration = LocalConfiguration.current
@@ -61,17 +46,14 @@ fun GameOverScreen(
         configuration.screenHeightDp > configuration.screenWidthDp
     }
 
-    // Gradual animation sequence
-    LaunchedEffect(Unit) {
-        delay(300)
-        showScoreAnimation = true
-        delay(1000)
-        showHighScoreAnimation = true
-        delay(500)
-        showButtons = true
-    }
+    // Add scroll state for landscape mode
+    val scrollState = rememberScrollState()
 
-    // Use the same sky gradient as MainMenu with animated clouds
+    // Track button press states for visual feedback
+    var playAgainPressed by remember { mutableStateOf(false) }
+    var mainMenuPressed by remember { mutableStateOf(false) }
+
+    // Sky gradient with animated clouds background
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -85,207 +67,377 @@ fun GameOverScreen(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Add animated clouds to background (same as MainMenu)
+        // Add animated clouds to background
         AnimatedCloudsBackground()
 
-        if (isPortrait) {
-            // Portrait layout
+        // Main content - use scroll for landscape
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .then(if (!isPortrait) Modifier.verticalScroll(scrollState) else Modifier),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Game Over title - with animated effect
+            AnimatedGameOverTitle(isPortrait)
+
+            Spacer(modifier = Modifier.height(if (isPortrait) 32.dp else 16.dp))
+
+            // Layout adjustment for landscape
+            if (isPortrait) {
+                // Portrait layout (vertical) - unchanged
+                PortraitGameOverContent(
+                    gameState = gameState,
+                    playAgainPressed = playAgainPressed,
+                    mainMenuPressed = mainMenuPressed,
+                    onPlayAgain = {
+                        playAgainPressed = true
+                        gameState.resetForNewGame()
+                        try {
+                            navController.navigate("game") {
+                                popUpTo("gameOver") { inclusive = true }
+                            }
+                            Log.d(TAG, "Direct navigation to game executed")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Navigation error: ${e.message}", e)
+                        }
+                    },
+                    onMainMenu = {
+                        mainMenuPressed = true
+                        try {
+                            navController.navigate("mainMenu") {
+                                popUpTo(0) // Pop everything up to the start destination
+                            }
+                            Log.d(TAG, "Direct navigation to main menu executed")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Navigation error: ${e.message}", e)
+                        }
+                    }
+                )
+            } else {
+                // Landscape layout (horizontal)
+                LandscapeGameOverContent(
+                    gameState = gameState,
+                    playAgainPressed = playAgainPressed,
+                    mainMenuPressed = mainMenuPressed,
+                    onPlayAgain = {
+                        playAgainPressed = true
+                        gameState.resetForNewGame()
+                        try {
+                            navController.navigate("game") {
+                                popUpTo("gameOver") { inclusive = true }
+                            }
+                            Log.d(TAG, "Direct navigation to game executed")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Navigation error: ${e.message}", e)
+                        }
+                    },
+                    onMainMenu = {
+                        mainMenuPressed = true
+                        try {
+                            navController.navigate("mainMenu") {
+                                popUpTo(0) // Pop everything up to the start destination
+                            }
+                            Log.d(TAG, "Direct navigation to main menu executed")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Navigation error: ${e.message}", e)
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    // Reset button visual states
+    LaunchedEffect(playAgainPressed) {
+        if (playAgainPressed) {
+            delay(300)
+            playAgainPressed = false
+        }
+    }
+
+    LaunchedEffect(mainMenuPressed) {
+        if (mainMenuPressed) {
+            delay(300)
+            mainMenuPressed = false
+        }
+    }
+}
+
+@Composable
+private fun PortraitGameOverContent(
+    gameState: GameState,
+    playAgainPressed: Boolean,
+    mainMenuPressed: Boolean,
+    onPlayAgain: () -> Unit,
+    onMainMenu: () -> Unit
+) {
+    // Score card
+    Card(
+        modifier = Modifier
+            .width(280.dp)
+            .padding(bottom = 32.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xBBFFFFFF) // Semi-transparent white
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Final score
+            Text(
+                text = "Final Score",
+                fontSize = 18.sp,
+                color = Color(0xFF4CAF50),
+                fontWeight = FontWeight.Medium
+            )
+
+            Text(
+                text = "${gameState.finalScore.value}",
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF333333)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // High score
+            Text(
+                text = "High Score",
+                fontSize = 18.sp,
+                color = Color(0xFF9C27B0),
+                fontWeight = FontWeight.Medium
+            )
+
+            Text(
+                text = "${gameState.highScore.value}",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF333333)
+            )
+
+            // If we have a new high score, show it
+            if (gameState.finalScore.value >= gameState.highScore.value) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "NEW HIGH SCORE!",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFF9800),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+
+    // Play Again button with direct navigation
+    Button(
+        onClick = onPlayAgain,
+        modifier = Modifier
+            .width(220.dp)
+            .height(60.dp)
+            .scale(if (playAgainPressed) 0.95f else 1f),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF4CAF50),
+            contentColor = Color.White
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 8.dp,
+            pressedElevation = 0.dp
+        )
+    ) {
+        Text(
+            text = "Play Again",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    // Main Menu button with direct navigation
+    Button(
+        onClick = onMainMenu,
+        modifier = Modifier
+            .width(220.dp)
+            .height(60.dp)
+            .scale(if (mainMenuPressed) 0.95f else 1f),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF9C27B0), // Different color to differentiate
+            contentColor = Color.White
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 8.dp,
+            pressedElevation = 0.dp
+        )
+    ) {
+        Text(
+            text = "Main Menu",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun LandscapeGameOverContent(
+    gameState: GameState,
+    playAgainPressed: Boolean,
+    mainMenuPressed: Boolean,
+    onPlayAgain: () -> Unit,
+    onMainMenu: () -> Unit
+) {
+    // Horizontal layout for landscape
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Score card
+        Card(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xBBFFFFFF) // Semi-transparent white
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 4.dp
+            )
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Game Over title with animation
-                EnhancedGameOverTitle()
+                // Final score
+                Text(
+                    text = "Final Score",
+                    fontSize = 16.sp,
+                    color = Color(0xFF4CAF50),
+                    fontWeight = FontWeight.Medium
+                )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "${gameState.finalScore.value}",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF333333)
+                )
 
-                // Score display with animation
-                AnimatedVisibility(
-                    visible = showScoreAnimation,
-                    initiallyVisible = false
-                ) {
-                    EnhancedScoreBox(
-                        score = finalScore,
-                        label = "Your Score",
-                        backgroundColor = Color(0xFF4CAF50),
-                        size = SCORE_BOX_SIZE
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // High score
+                Text(
+                    text = "High Score",
+                    fontSize = 16.sp,
+                    color = Color(0xFF9C27B0),
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = "${gameState.highScore.value}",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF333333)
+                )
+
+                // If we have a new high score, show it
+                if (gameState.finalScore.value >= gameState.highScore.value) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "NEW HIGH SCORE!",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF9800),
+                        textAlign = TextAlign.Center
                     )
-                }
-
-                // High Score Display with animation
-                AnimatedVisibility(
-                    visible = showHighScoreAnimation,
-                    initiallyVisible = false
-                ) {
-                    EnhancedScoreBox(
-                        score = highScore,
-                        label = "Best Score",
-                        backgroundColor = Color(0xFF9C27B0),
-                        size = SCORE_BOX_SIZE
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Action buttons with animation
-                AnimatedVisibility(
-                    visible = showButtons,
-                    initiallyVisible = false
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Restart Button
-                        EnhancedActionButton(
-                            text = "Play Again",
-                            onClick = onRestart,
-                            modifier = Modifier.width(220.dp)
-                        )
-
-                        // Main Menu Button
-                        EnhancedActionButton(
-                            text = "Main Menu",
-                            onClick = onMainMenu,
-                            modifier = Modifier.width(220.dp),
-                            color = Color(0xFF9C27B0) // Purple
-                        )
-                    }
                 }
             }
-        } else {
-            // Landscape layout
-            Row(
+        }
+
+        // Buttons column
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Play Again button
+            Button(
+                onClick = onPlayAgain,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .height(56.dp)
+                    .scale(if (playAgainPressed) 0.95f else 1f),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50),
+                    contentColor = Color.White
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 8.dp,
+                    pressedElevation = 0.dp
+                )
             ) {
-                // Left side - Game Over and Score
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    EnhancedGameOverTitle(fontSize = 36.sp)
+                Text(
+                    text = "Play Again",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-                    // Score display in landscape - horizontal arrangement
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        AnimatedVisibility(
-                            visible = showScoreAnimation,
-                            initiallyVisible = false
-                        ) {
-                            EnhancedScoreBox(
-                                score = finalScore,
-                                label = "Your Score",
-                                size = LANDSCAPE_SCORE_BOX_SIZE,
-                                labelSize = 14.sp,
-                                valueSize = 28.sp,
-                                backgroundColor = Color(0xFF4CAF50)
-                            )
-                        }
-
-                        AnimatedVisibility(
-                            visible = showHighScoreAnimation,
-                            initiallyVisible = false
-                        ) {
-                            EnhancedScoreBox(
-                                score = highScore,
-                                label = "Best Score",
-                                size = LANDSCAPE_SCORE_BOX_SIZE,
-                                labelSize = 14.sp,
-                                valueSize = 28.sp,
-                                backgroundColor = Color(0xFF9C27B0)
-                            )
-                        }
-                    }
-                }
-
-                // Right side - Buttons
-                AnimatedVisibility(
-                    visible = showButtons,
-                    initiallyVisible = false
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Restart Button
-                        EnhancedActionButton(
-                            text = "Play Again",
-                            onClick = onRestart,
-                            modifier = Modifier.width(200.dp)
-                        )
-
-                        // Main Menu Button
-                        EnhancedActionButton(
-                            text = "Main Menu",
-                            onClick = onMainMenu,
-                            modifier = Modifier.width(200.dp),
-                            color = Color(0xFF9C27B0) // Purple
-                        )
-                    }
-                }
+            // Main Menu button
+            Button(
+                onClick = onMainMenu,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .scale(if (mainMenuPressed) 0.95f else 1f),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF9C27B0),
+                    contentColor = Color.White
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 8.dp,
+                    pressedElevation = 0.dp
+                )
+            ) {
+                Text(
+                    text = "Main Menu",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
 }
 
 /**
- * Animated visibility effect with custom implementation
+ * Animated "GAME OVER" title that matches MainMenuScreen's animated title style
  */
 @Composable
-fun AnimatedVisibility(
-    visible: Boolean,
-    initiallyVisible: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        label = "alphaAnimation"
-    )
+private fun AnimatedGameOverTitle(isPortrait: Boolean) {
+    val infiniteTransition = rememberInfiniteTransition(label = "gameOverAnimation")
 
-    val scale by animateFloatAsState(
-        targetValue = if (visible) 1f else 0.8f,
-        label = "scaleAnimation"
-    )
-
-    if (initiallyVisible || visible) {
-        Box(
-            modifier = Modifier
-                .graphicsLayer(
-                    alpha = alpha,
-                    scaleX = scale,
-                    scaleY = scale
-                )
-        ) {
-            content()
-        }
-    }
-}
-
-/**
- * Enhanced Game Over title with animation effects
- */
-@Composable
-fun EnhancedGameOverTitle(
-    fontSize: androidx.compose.ui.unit.TextUnit = TITLE_FONT_SIZE
-) {
-    // Animation effects similar to main menu title
-    val infiniteTransition = rememberInfiniteTransition(label = "titleAnimation")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.05f,
@@ -308,9 +460,10 @@ fun EnhancedGameOverTitle(
 
     Text(
         text = "GAME OVER",
-        fontSize = fontSize,
-        fontWeight = FontWeight.Bold,
+        fontSize = if (isPortrait) 40.sp else 36.sp,
         color = Color.White,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
         style = androidx.compose.ui.text.TextStyle(
             shadow = androidx.compose.ui.graphics.Shadow(
                 color = Color(0x99000000),
@@ -324,122 +477,4 @@ fun EnhancedGameOverTitle(
             rotationZ = rotation
         }
     )
-}
-
-/**
- * Enhanced Score box with card design
- */
-@Composable
-fun EnhancedScoreBox(
-    score: Int,
-    label: String = "Score",
-    size: androidx.compose.ui.unit.Dp = SCORE_BOX_SIZE,
-    labelSize: androidx.compose.ui.unit.TextUnit = SCORE_LABEL_SIZE,
-    valueSize: androidx.compose.ui.unit.TextUnit = SCORE_VALUE_SIZE,
-    backgroundColor: Color = Color(0xFF4CAF50)
-) {
-    // Animation for the score card
-    val infiniteTransition = rememberInfiniteTransition(label = "scoreBoxAnimation")
-    val elevation by infiniteTransition.animateFloat(
-        initialValue = 4f,
-        targetValue = 8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "elevationAnimation"
-    )
-
-    Card(
-        modifier = Modifier
-            .size(size)
-            .graphicsLayer {
-                shadowElevation = elevation
-            },
-        shape = RoundedCornerShape(size / 4),
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor.copy(alpha = 0.9f)
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 0.dp
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = label,
-                    fontSize = labelSize,
-                    color = Color.White,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = score.toString(),
-                    fontSize = valueSize,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1 // FIXED: Ensure single line display
-                )
-            }
-        }
-    }
-}
-
-/**
- * Enhanced Action button with animation effects
- */
-@Composable
-fun EnhancedActionButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    color: Color = Color(0xFF4CAF50) // Default green
-) {
-    var isPressed by remember { mutableStateOf(false) }
-
-    Button(
-        onClick = {
-            isPressed = true
-            onClick()
-        },
-        modifier = modifier
-            .height(BUTTON_HEIGHT)
-            .scale(if (isPressed) 0.95f else 1f)
-            .graphicsLayer {
-                shadowElevation = if (isPressed) 0f else 8f
-            },
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = color
-        ),
-        border = null, // FIXED: Remove border to fix background color issue
-        elevation = ButtonDefaults.buttonElevation(
-            defaultElevation = 4.dp,
-            pressedElevation = 0.dp
-        )
-    ) {
-        Text(
-            text = text,
-            fontSize = BUTTON_FONT_SIZE,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
-    }
-
-    // Reset button state after animation
-    LaunchedEffect(isPressed) {
-        if (isPressed) {
-            delay(100)
-            isPressed = false
-        }
-    }
 }

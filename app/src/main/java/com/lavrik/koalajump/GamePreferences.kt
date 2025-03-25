@@ -59,14 +59,82 @@ class GamePreferences(private val context: Context) {
         Log.d(TAG, "First launch completed")
     }
 
-    // High score
-    fun getHighScore(): Int = prefs.getInt(KEY_HIGH_SCORE, 0)
+    // High score - FIXED: Improved persistence
+    fun getHighScore(): Int {
+        // Try to get the high score from primary location
+        val highScore = prefs.getInt(KEY_HIGH_SCORE, 0)
+
+        // If high score is 0, try to recover from backup location
+        if (highScore == 0) {
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                val backupHighScore = backupPrefs.getInt("backup_high_score", 0)
+
+                if (backupHighScore > 0) {
+                    // Found a backup, restore to primary location
+                    Log.d(TAG, "Recovered high score $backupHighScore from backup")
+                    prefs.edit().putInt(KEY_HIGH_SCORE, backupHighScore).commit()
+                    return backupHighScore
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error accessing backup preferences: ${e.message}")
+            }
+        }
+
+        return highScore
+    }
 
     fun setHighScore(score: Int) {
         val currentHighScore = getHighScore()
         if (score > currentHighScore) {
-            prefs.edit().putInt(KEY_HIGH_SCORE, score).apply()
-            Log.d(TAG, "New high score saved: $score")
+            // FIXED: Use commit() instead of apply() for immediate persistence
+            val success = prefs.edit().putInt(KEY_HIGH_SCORE, score).commit()
+            Log.d(TAG, "New high score saved: $score, success: $success")
+
+            // Create a backup for redundancy
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                backupPrefs.edit().putInt("backup_high_score", score).commit()
+                Log.d(TAG, "High score backup created")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to backup high score: ${e.message}")
+            }
+        }
+    }
+
+    // IMPROVED: Enhanced method to verify high score integrity at app start
+    fun verifyHighScore() {
+        val highScore = getHighScore()
+        Log.d(TAG, "Verifying high score: current value = $highScore")
+
+        // If we have a high score, make sure it's properly saved
+        if (highScore > 0) {
+            // Save again to ensure persistence
+            val success = prefs.edit().putInt(KEY_HIGH_SCORE, highScore).commit()
+            Log.d(TAG, "High score verification complete. Save success: $success")
+
+            // Also update backup
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                val backupSuccess = backupPrefs.edit().putInt("backup_high_score", highScore).commit()
+                Log.d(TAG, "High score backup updated during verification. Success: $backupSuccess")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update backup during verification: ${e.message}")
+            }
+        } else {
+            // Check if there's a backup even though primary is 0
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                val backupHighScore = backupPrefs.getInt("backup_high_score", 0)
+
+                if (backupHighScore > 0) {
+                    // Found a backup but primary is 0, restore from backup
+                    val success = prefs.edit().putInt(KEY_HIGH_SCORE, backupHighScore).commit()
+                    Log.d(TAG, "Recovered high score $backupHighScore from backup during verification. Success: $success")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking backup during verification: ${e.message}")
+            }
         }
     }
 
@@ -103,12 +171,12 @@ class GamePreferences(private val context: Context) {
 
         prefs.edit().clear().apply()
 
-        // Restore stats
+        // Restore stats with commit() instead of apply()
         prefs.edit()
             .putInt(KEY_HIGH_SCORE, highScore)
             .putInt(KEY_TOTAL_PLAYS, totalPlays)
             .putBoolean(KEY_FIRST_LAUNCH, false)
-            .apply()
+            .commit()
 
         Log.d(TAG, "All settings reset to defaults (kept high score and play count)")
     }

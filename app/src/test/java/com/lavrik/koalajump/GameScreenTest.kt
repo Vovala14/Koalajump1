@@ -5,7 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.navigation.testing.TestNavHostController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.lavrik.koalajump.screens.GameScreen
+import screens.GameScreen
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test

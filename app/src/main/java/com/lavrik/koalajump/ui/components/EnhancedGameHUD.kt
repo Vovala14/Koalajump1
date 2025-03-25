@@ -1,133 +1,122 @@
 package com.lavrik.koalajump.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lavrik.koalajump.game.GameEnvironment
-import kotlinx.coroutines.delay
 
+/**
+ * Enhanced game HUD showing score, lives, level and environment
+ */
 @Composable
 fun EnhancedGameHUD(
     score: Int,
     level: Int,
     lives: Int,
     hasSpeedBoost: Boolean,
-    environment: GameEnvironment = GameEnvironment.FOREST // Default value for backward compatibility
+    environment: GameEnvironment
 ) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(60.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.Start
     ) {
-        // Score with animation when it changes
-        var prevScore by remember { mutableStateOf(score) }
-        val scoreScale by animateFloatAsState(
-            targetValue = if (prevScore != score) 1.2f else 1f,
-            label = "scoreScale"
-        )
+        // Score at the top
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .background(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 8.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Score: $score",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
-        LaunchedEffect(score) {
-            if (prevScore != score) {
-                delay(300)
-                prevScore = score
+                Text(
+                    text = "${environment.levelName} - Level $level",
+                    color = Color.White,
+                    fontSize = 16.sp
+                )
             }
         }
 
+        // Add some space
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Lives indicator
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Score with bouncy animation when it changes
-            Box {
-                Text(
-                    text = "Score: $score",
-                    style = TextStyle(
-                        color = Color.Black,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        shadow = Shadow(
-                            color = Color.White,
-                            offset = Offset(1f, 1f),
-                            blurRadius = 3f
-                        )
-                    ),
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = scoreScale
-                        scaleY = scoreScale
-                    }
-                )
-            }
+            Text(
+                text = "Lives: ",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
 
-            // Environment & Level indicator
-            Box(
-                modifier = Modifier
-                    .background(
-                        color = Color(0xAA4CAF50),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "${environment.levelName} (Level $level)",
-                    style = TextStyle(
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-            }
+            Spacer(modifier = Modifier.width(4.dp))
 
-            // Lives as hearts
+            // Hearts for lives
             Row {
-                repeat(lives) {
-                    Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = "Life",
-                        tint = Color.Red,
-                        modifier = Modifier.size(24.dp)
-                    )
+                for (i in 1..lives) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(2.dp)
+                    ) {
+                        Canvas(modifier = Modifier.size(20.dp)) {
+                            drawCircle(
+                                color = Color.Red,
+                                radius = size.width / 2f
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Speed boost indicator
+        // Boost indicator if active
         if (hasSpeedBoost) {
+            Spacer(modifier = Modifier.height(4.dp))
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = 40.dp)
+                    .fillMaxWidth()
+                    .height(24.dp)
                     .background(
                         color = Color(0xDDFFD700),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(4.dp)
                     )
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "SPEED BOOST!",
-                    style = TextStyle(
-                        color = Color.Black,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    text = "SPEED BOOST ACTIVE!",
+                    color = Color.Black,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

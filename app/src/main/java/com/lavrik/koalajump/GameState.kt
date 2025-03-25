@@ -36,6 +36,10 @@ class GameState(private val context: Context) {
     // Game status
     val isGameActive = mutableStateOf(false)
 
+    // Game Over state - renamed to avoid clash
+    private var _gameOverState = false
+    val gameOverState: Boolean get() = _gameOverState
+
     // Orientation preference - using a private MutableLiveData with public accessor methods
     private val allowRotation = MutableLiveData(loadAllowRotation())
 
@@ -70,8 +74,30 @@ class GameState(private val context: Context) {
     val soundEnabled = mutableStateOf(loadSoundSetting())
     val vibrationEnabled = mutableStateOf(loadVibrationSetting())
 
-    // Private methods to load settings from SharedPreferences
-    private fun loadHighScore(): Int = prefs.getInt(KEY_HIGH_SCORE, 0)
+    // Private methods to load settings from SharedPreferences with backup recovery
+    private fun loadHighScore(): Int {
+        // Try to load from primary location
+        val highScore = prefs.getInt(KEY_HIGH_SCORE, 0)
+
+        // If high score is 0, try to recover from backup
+        if (highScore == 0) {
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                val backupHighScore = backupPrefs.getInt("backup_high_score", 0)
+
+                if (backupHighScore > 0) {
+                    // Found a backup, restore it to primary location
+                    Log.d(TAG, "Recovered high score $backupHighScore from backup")
+                    prefs.edit().putInt(KEY_HIGH_SCORE, backupHighScore).commit()
+                    return backupHighScore
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error accessing backup: ${e.message}")
+            }
+        }
+
+        return highScore
+    }
 
     private fun loadSoundSetting(): Boolean = prefs.getBoolean(KEY_SOUND_ENABLED, true)
 
@@ -132,6 +158,7 @@ class GameState(private val context: Context) {
         gameSpeed.value = INITIAL_SPEED
         currentCombo.value = 0
         _recentCollectTimes.clear()
+        _gameOverState = false
     }
 
     /**
@@ -207,10 +234,18 @@ class GameState(private val context: Context) {
             highScore.value = newScore
             _achievedHighScores.add(newScore)
 
-            // Save high score to preferences
-            prefs.edit().putInt(KEY_HIGH_SCORE, newScore).apply()
+            // Save high score to preferences - FIXED: Use commit() for immediate persistence
+            val success = prefs.edit().putInt(KEY_HIGH_SCORE, newScore).commit()
+            Log.d(TAG, "New high score: ${highScore.value} saved to preferences. Success: $success")
 
-            Log.d(TAG, "New high score: ${highScore.value} saved to preferences")
+            // Create a backup of the high score for redundancy
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                backupPrefs.edit().putInt("backup_high_score", newScore).commit()
+                Log.d(TAG, "High score backup created")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create high score backup: ${e.message}")
+            }
         }
     }
 
@@ -225,6 +260,13 @@ class GameState(private val context: Context) {
         // Reset combo on hit
         _recentCollectTimes.clear()
         currentCombo.value = 0
+
+        // Check for game over
+        if (lives.value <= 0) {
+            _gameOverState = true
+            endGame()
+            return false
+        }
 
         return lives.value > 0
     }
@@ -263,34 +305,58 @@ class GameState(private val context: Context) {
      */
     fun endGame() {
         Log.d(TAG, "Game ended. Final score: ${score.value}")
+
+        // Mark game as over and inactive
+        _gameOverState = true
         isGameActive.value = false
+
+        // Set final score
         finalScore.value = score.value
+
+        // Make sure lives are set to 0 to ensure game over state is properly detected
+        if (lives.value > 0) {
+            lives.value = 0
+        }
+
+        // Update high score
         updateHighScore()
     }
 
     /**
-     * Check if game is over
+     * Check if game is over - renamed to avoid declaration clash
      */
-    fun isGameOver(): Boolean {
-        val gameOver = lives.value <= 0
-        if (gameOver) {
-            Log.d(TAG, "Game over - no lives remaining")
+    fun checkGameOver(): Boolean {
+        val gameOver = lives.value <= 0 || _gameOverState
+
+        // If we detect game over condition but haven't marked game as over yet, do it now
+        if (gameOver && isGameActive.value) {
+            Log.d(TAG, "Game over condition detected - ending game")
+            endGame()
         }
+
         return gameOver
     }
 
     /**
-     * Update high score
+     * Update high score with improved persistence
      */
     private fun updateHighScore() {
         if (finalScore.value > highScore.value) {
             highScore.value = finalScore.value
             _achievedHighScores.add(finalScore.value)
 
-            // Save high score to preferences
-            prefs.edit().putInt(KEY_HIGH_SCORE, finalScore.value).apply()
+            // Save high score to preferences with commit() for immediate write
+            val success = prefs.edit().putInt(KEY_HIGH_SCORE, finalScore.value).commit()
+            Log.d(TAG, "High score updated to: ${highScore.value}, saved successfully: $success")
 
-            Log.d(TAG, "High score updated to: ${highScore.value} and saved to preferences")
+            // Backup the high score to a second preference location for redundancy
+            try {
+                val backupPrefs = context.getSharedPreferences("backup_game_prefs", Context.MODE_PRIVATE)
+                backupPrefs.edit().putInt("backup_high_score", finalScore.value).commit()
+                Log.d(TAG, "High score backup created")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create high score backup: ${e.message}")
+            }
         }
     }
 
@@ -341,5 +407,6 @@ class GameState(private val context: Context) {
         gameSpeed.value = INITIAL_SPEED
         currentCombo.value = 0
         _recentCollectTimes.clear()
+        _gameOverState = false
     }
 }
