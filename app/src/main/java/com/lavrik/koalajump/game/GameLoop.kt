@@ -1,6 +1,10 @@
 package com.lavrik.koalajump.game
 
 import android.content.Context
+import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import com.lavrik.koalajump.GameState
 import com.lavrik.koalajump.utils.SoundManager
@@ -9,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.sqrt
 
 /**
  * Improved game loop with basic movement and jumping physics
@@ -23,7 +28,17 @@ class GameLoop(
         private const val FRAME_DELAY = 33L // ~30fps
         private const val JUMP_VELOCITY = -20f // Setting that worked well
         private const val GRAVITY = 1.6f // Gravity pulling down
-        private const val OBSTACLE_SPEED = 12f // Speed of obstacles moving left
+        private const val OBSTACLE_SPEED = 16f // Increased from 12f to 16f for faster gameplay
+        private const val ACCELERATION_PERIOD = 10000f // Time in ms for game to reach full speed
+        private const val BOOSTER_DURATION = 5000L // 5 seconds of boost
+        private const val COLLECTIBLE_ATTRACTION_RANGE = 200f // Range for collectible magnet effect
+
+        // Increased spacing constants
+        private const val BASE_OBSTACLE_SPACING = 650f // Increased from 400f for more space
+        private const val OBSTACLE_SPACING_VARIATION = 300f // Increased from 200f for more variation
+
+        // Vibration constants
+        private const val COLLISION_VIBRATION_DURATION = 200L // 200ms vibration on collision
     }
 
     // Coroutine scope for launching background tasks
@@ -36,6 +51,7 @@ class GameLoop(
     private var currentLevel = 1
     private var isGameActive = true
     private var isGameOver = false  // New flag to track game over state
+    private var gameStartTime: Long = 0
 
     // Koala position and movement
     private var koalaX = 0f
@@ -49,7 +65,9 @@ class GameLoop(
 
     // Game mechanics
     private var hasSpeedBoost = false
+    private var isInvincible = false // Added for invincibility tracking
     private var gameSpeedMultiplier = 1.0f
+    private var scoreMultiplier = 1 // Added for score multiplier
 
     // Game objects
     private var obstacles = arrayOf(500f, 800f, 1200f)
@@ -68,17 +86,21 @@ class GameLoop(
         currentLevel = 1
         isGameOver = false
         isGameActive = true
+        gameStartTime = SystemClock.uptimeMillis()
+        hasSpeedBoost = false
+        isInvincible = false
+        scoreMultiplier = 1
 
         // Set up koala position
         koalaX = screenWidth / 4f
         groundY = groundLevel
         koalaY = groundY - koalaHeight
 
-        // Reset obstacles positions
+        // Reset obstacles positions with greater spacing
         obstacles = arrayOf(
-            screenWidth + 400f,
-            screenWidth + 800f,
-            screenWidth + 1200f
+            screenWidth + BASE_OBSTACLE_SPACING,
+            screenWidth + BASE_OBSTACLE_SPACING * 2,
+            screenWidth + BASE_OBSTACLE_SPACING * 3
         )
 
         // Reset collectibles
@@ -218,7 +240,9 @@ class GameLoop(
      * Move obstacles from right to left
      */
     private fun moveObstacles() {
-        val effectiveSpeed = OBSTACLE_SPEED * gameSpeedMultiplier
+        val gameTime = SystemClock.uptimeMillis() - gameStartTime
+        val startingSpeedFactor = minOf(1.0f, gameTime / ACCELERATION_PERIOD) // Ramps up to full speed
+        val effectiveSpeed = OBSTACLE_SPEED * gameSpeedMultiplier * startingSpeedFactor
 
         for (i in obstacles.indices) {
             // Move obstacle left
@@ -229,8 +253,11 @@ class GameLoop(
                 // Find the furthest obstacle
                 val furthestObstacle = obstacles.maxOrNull() ?: 1000f
 
-                // Place beyond the furthest one with spacing
-                obstacles[i] = furthestObstacle + 400f + (Math.random() * 200).toFloat()
+                // Place beyond the furthest one with increased spacing
+                val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
+                obstacles[i] = furthestObstacle +
+                        (BASE_OBSTACLE_SPACING * boostSpacingMultiplier) +
+                        (Math.random() * OBSTACLE_SPACING_VARIATION).toFloat()
             }
         }
     }
@@ -239,26 +266,51 @@ class GameLoop(
      * Move collectibles from right to left
      */
     private fun moveCollectibles() {
-        val effectiveSpeed = OBSTACLE_SPEED * gameSpeedMultiplier
+        val gameTime = SystemClock.uptimeMillis() - gameStartTime
+        val startingSpeedFactor = minOf(1.0f, gameTime / ACCELERATION_PERIOD) // Ramps up to full speed
+        val effectiveSpeed = OBSTACLE_SPEED * gameSpeedMultiplier * startingSpeedFactor
+
         val newCollectibles = Array(collectibles.size) { i ->
             val (x, y, active) = collectibles[i]
 
-            // Move collectible left if active
-            val newX = if (active) x - effectiveSpeed else x
+            if (active) {
+                var newX = x - effectiveSpeed
+                var newY = y
 
-            // Reset collectible when it goes off screen
-            if (newX < -50) { // Assuming collectible width is around 50px
-                // Find the furthest collectible
-                val furthestCollectible = collectibles.maxOfOrNull { it.first } ?: 1000f
+                // Collectible magnet effect during boost
+                if (hasSpeedBoost) {
+                    // Calculate distance to koala
+                    val dx = koalaX - newX
+                    val dy = koalaY - newY
+                    val distance = sqrt(dx * dx + dy * dy)
 
-                // Place beyond the furthest one with spacing
-                Triple(
-                    furthestCollectible + 400f + (Math.random() * 300).toFloat(),
-                    groundY - 120f - (Math.random() * 160f).toFloat(), // 20% lower for respawning
-                    true
-                )
+                    // If within range, move collectible toward koala
+                    if (distance < COLLECTIBLE_ATTRACTION_RANGE) {
+                        val attractionSpeed = 10f
+                        val moveX = dx * attractionSpeed / distance
+                        val moveY = dy * attractionSpeed / distance
+
+                        newX += moveX
+                        newY += moveY
+                    }
+                }
+
+                // Reset collectible when it goes off screen
+                if (newX < -50) { // Assuming collectible width is around 50px
+                    // Find the furthest collectible
+                    val furthestCollectible = collectibles.maxOfOrNull { it.first } ?: 1000f
+
+                    // Place beyond the furthest one with spacing
+                    Triple(
+                        furthestCollectible + 600f + (Math.random() * 300).toFloat(), // Increased spacing
+                        groundY - 120f - (Math.random() * 160f).toFloat(), // 20% lower for respawning
+                        true
+                    )
+                } else {
+                    Triple(newX, newY, active)
+                }
             } else {
-                Triple(newX, y, active)
+                Triple(x, y, active)
             }
         }
         collectibles = newCollectibles
@@ -274,28 +326,72 @@ class GameLoop(
 
             if (active && Math.abs(x - koalaX) < 70 && Math.abs(y - koalaY) < 70) {
                 // Collision detected!
-                // Use the collectible value from current environment
-                score += gameState.currentEnvironment.value.collectibleValue
+                // Apply score multiplier during boost
+                val pointValue = gameState.currentEnvironment.value.collectibleValue * scoreMultiplier
+                score += pointValue
+
+                // Play the appropriate sound
                 soundManager.playCollectSound()
 
                 // Mark as collected
                 collectibles[i] = Triple(x, y, false)
 
-                // Randomly trigger speed boost
-                if (!hasSpeedBoost && Math.random() < 0.3) {
-                    hasSpeedBoost = true
-                    gameSpeedMultiplier = 1.5f
-
-                    // Cancel previous job if exists
-                    speedBoostJob?.cancel()
-
-                    // Schedule end of speed boost with proper coroutine scope
-                    speedBoostJob = coroutineScope.launch {
-                        delay(5000) // 5 seconds
-                        hasSpeedBoost = false
-                        gameSpeedMultiplier = 1.0f
-                    }
+                // Handle booster collectibles
+                val isBooster = (i == collectibles.size - 1) // Assume the last collectible is a booster
+                if (isBooster) {
+                    activateBooster()
                 }
+            }
+        }
+    }
+
+    /**
+     * Activate booster power-up
+     */
+    private fun activateBooster() {
+        if (!hasSpeedBoost) {
+            hasSpeedBoost = true
+            isInvincible = true
+            scoreMultiplier = 2
+            gameSpeedMultiplier = 1.5f
+
+            // Update koala's visual state
+            gameState.getKoala()?.setPowerUpState(true)
+            gameState.getKoala()?.setInvincibleState(true)
+
+            // Cancel previous job if exists
+            speedBoostJob?.cancel()
+
+            // Play a special power-up sound
+            // Note: Add a power-up sound to SoundManager
+            soundManager.playCollectSound() // Replace with power-up sound when available
+
+            // Schedule end of speed boost with proper coroutine scope
+            speedBoostJob = coroutineScope.launch {
+                delay(BOOSTER_DURATION) // 5 seconds
+                hasSpeedBoost = false
+                isInvincible = false
+                scoreMultiplier = 1
+                gameSpeedMultiplier = 1.0f
+
+                // Update koala's visual state back to normal
+                gameState.getKoala()?.setPowerUpState(false)
+                gameState.getKoala()?.setInvincibleState(false)
+            }
+        } else {
+            // If already boosting, extend the duration
+            speedBoostJob?.cancel()
+
+            speedBoostJob = coroutineScope.launch {
+                delay(BOOSTER_DURATION) // 5 seconds
+                hasSpeedBoost = false
+                isInvincible = false
+                scoreMultiplier = 1
+                gameSpeedMultiplier = 1.0f
+
+                // Update koala's visual state back to normal
+                gameState.getKoala()?.setPowerUpState(false)
+                gameState.getKoala()?.setInvincibleState(false)
             }
         }
     }
@@ -315,12 +411,38 @@ class GameLoop(
      * Handle collision with obstacles
      */
     fun handleCollision() {
+        // If invincible, ignore collision
+        if (isInvincible) {
+            return
+        }
+
         // Decrease lives
         lives--
         gameState.lives.value = lives
 
         // Play hit sound
         soundManager.playHitSound()
+
+        // Add vibration when collision occurs
+        if (gameState.vibrationEnabled.value) {
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(
+                    COLLISION_VIBRATION_DURATION,
+                    VibrationEffect.DEFAULT_AMPLITUDE
+                ))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(COLLISION_VIBRATION_DURATION)
+            }
+        }
 
         // Check for game over
         if (lives <= 0 && !isGameOver) {
@@ -353,6 +475,11 @@ class GameLoop(
      * Check if speed boost is active
      */
     fun hasSpeedBoost(): Boolean = hasSpeedBoost
+
+    /**
+     * Check if player is invincible
+     */
+    fun isInvincible(): Boolean = isInvincible
 
     /**
      * Get the current obstacles positions

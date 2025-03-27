@@ -1,5 +1,111 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">KoalaJump</string>
-    <string name="default_web_client_id">600998730812-ar58a2se1aktl2kkj3492vmi3t5e5715.apps.googleusercontent.com</string>
+    <!-- App Name and Description -->
+    <string name="app_name">Koala Jump: Endless Adventure Runner</string>
+    <string name="app_description">Jump through vibrant worlds with your koala in this addictive endless runner game!</string>
+
+    <!-- Main Menu Strings -->
+    <string name="start_game">Start Game</string>
+    <string name="leaderboard">Leaderboard</string>
+    <string name="environments">Environments</string>
+    <string name="settings">Settings</string>
+    <string name="about">About</string>
+
+    <!-- Game Play Strings -->
+    <string name="score">Score: %1$d</string>
+    <string name="level">Level %1$d</string>
+    <string name="lives">Lives: %1$d</string>
+    <string name="speed_boost">SPEED BOOST ACTIVE!</string>
+    <string name="game_paused">Game Paused</string>
+    <string name="resume">Resume</string>
+    <string name="quit_game">Quit Game</string>
+    <string name="game_over">GAME OVER</string>
+    <string name="final_score">Final Score</string>
+    <string name="high_score">High Score</string>
+    <string name="new_high_score">NEW HIGH SCORE!</string>
+    <string name="play_again">Play Again</string>
+    <string name="main_menu">Main Menu</string>
+
+    <!-- Environment Names -->
+    <string name="environment_forest">Forest</string>
+    <string name="environment_desert">Desert</string>
+    <string name="environment_mountains">Mountains</string>
+    <string name="environment_beach">Beach</string>
+    <string name="environment_jungle">Jungle</string>
+
+    <!-- Obstacle Types -->
+    <string name="obstacle_tree">Tree</string>
+    <string name="obstacle_cactus">Cactus</string>
+    <string name="obstacle_rock">Rock</string>
+    <string name="obstacle_shell">Shell</string>
+    <string name="obstacle_vine">Vine</string>
+
+    <!-- Collectible Types -->
+    <string name="collectible_beer">Beer</string>
+    <string name="collectible_water">Water</string>
+    <string name="collectible_coffee">Coffee</string>
+    <string name="collectible_coconut">Coconut</string>
+    <string name="collectible_fruit">Fruit</string>
+
+    <!-- Tutorial Strings -->
+    <string name="tutorial_title">How to Play</string>
+    <string name="tutorial_step">Step %1$d of %2$d</string>
+    <string name="tutorial_1">Welcome to Koala Jump! Tap anywhere to make your koala jump.</string>
+    <string name="tutorial_2">Avoid obstacles by jumping over them. Each collision costs one life.</string>
+    <string name="tutorial_3">Collect items for points. Special items give temporary speed boosts!</string>
+    <string name="tutorial_4">The game gets faster as your score increases. New environments will unlock as you progress!</string>
+    <string name="tutorial_skip">Skip</string>
+    <string name="tutorial_next">Next</string>
+    <string name="tutorial_start">Start Playing</string>
+
+    <!-- Settings Strings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_sound">Sound Effects</string>
+    <string name="settings_vibration">Vibration</string>
+    <string name="settings_rotation">Allow Rotation</string>
+    <string name="settings_done">Done</string>
+
+    <!-- About Strings -->
+    <string name="about_title">About Koala Jump</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_developer">Developed by Lavrik Studios</string>
+    <string name="about_copyright">© 2025 Lavrik Studios</string>
+    <string name="about_description">Koala Jump is an endless runner game where you help your koala friend navigate through beautiful environments, jumping over obstacles and collecting items.</string>
+    <string name="about_website">Visit our website</string>
+    <string name="about_privacy">Privacy Policy</string>
+    <string name="about_terms">Terms of Service</string>
+    <string name="about_rate">Rate the App</string>
+    <string name="about_share">Share with Friends</string>
+
+    <!-- Share Message -->
+    <string name="share_message">Check out Koala Jump: Endless Adventure Runner! I scored %1$d points. Can you beat me? Download now: https://play.google.com/store/apps/details?id=com.lavrik.koalajump</string>
+
+    <!-- Rating Dialog -->
+    <string name="rating_title">Enjoying Koala Jump?</string>
+    <string name="rating_message">Please take a moment to rate us on the Play Store!</string>
+    <string name="rating_positive">Rate Now</string>
+    <string name="rating_negative">Maybe Later</string>
+    <string name="rating_never">No Thanks</string>
+
+    <!-- Google Play Games integration -->
+    <string name="game_services_project_id">YOUR_PLAY_GAMES_ID</string>
+    <string name="achievement_first_jump">First Jump</string>
+    <string name="achievement_level_5">Reached Level 5</string>
+    <string name="achievement_level_10">Reached Level 10</string>
+    <string name="achievement_score_1000">Scored 1000 Points</string>
+    <string name="achievement_all_environments">Visited All Environments</string>
+    <string name="leaderboard_high_scores">High Scores</string>
+
+    <!-- Error Messages -->
+    <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_leaderboard">Could not connect to leaderboard. Check your connection.</string>
+    <string name="error_save">Could not save game data. Your progress for this session may be lost.</string>
+
+    <!-- Promotional Content -->
+    <string name="promo_title">Koala Jump Features</string>
+    <string name="promo_simple">Simple &amp; fun one-touch gameplay</string>
+    <string name="promo_environments">5 beautiful, unique environments</string>
+    <string name="promo_collectibles">Collectibles and power-ups</string>
+    <string name="promo_challenge">Increasing challenge as you progress</string>
+    <string name="promo_compete">Compete with friends for high scores</string>
 </resources>

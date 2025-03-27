@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Add vibration permission -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Add hardware acceleration explicitly -->
     <application
         android:allowBackup="true"
@@ -29,11 +32,12 @@
             </intent-filter>
         </activity>
 
-        <!-- FIXED: MainActivity with configChanges for better rotation handling -->
+        <!-- Updated MainActivity to force portrait mode -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:screenOrientation="portrait"
+            android:configChanges="keyboardHidden|smallestScreenSize|screenLayout"
             android:hardwareAccelerated="true"
             android:theme="@style/Theme.KoalaJump">
         </activity>

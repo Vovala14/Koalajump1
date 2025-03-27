@@ -1,7 +1,6 @@
 package com.lavrik.koalajump
 
 import android.content.pm.ActivityInfo
-import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,7 +23,7 @@ import com.lavrik.koalajump.ui.components.KoalaJumpTheme
 
 
 /**
- * Main activity for the game
+ * Main activity for the game - now portrait only
  */
 class MainActivity : ComponentActivity() {
     companion object {
@@ -41,13 +40,13 @@ class MainActivity : ComponentActivity() {
     // Double back press to exit
     private var backPressedOnce = false
 
-    // Track current screen to manage rotation
+    // Track current screen
     private var currentScreen = "mainMenu"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Force portrait mode at startup
+        // Force portrait mode always
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
         // Add crash handler for better debugging
@@ -91,59 +90,15 @@ class MainActivity : ComponentActivity() {
                         gameState = gameState,
                         showTutorial = isFirstLaunch,
                         onScreenChange = { screen ->
-                            // Update current screen and handle rotation
-                            if (currentScreen != screen) {
-                                currentScreen = screen
-                                updateRotationBasedOnScreen(screen)
-                            }
+                            // Update current screen
+                            currentScreen = screen
                         }
                     )
                 }
             }
         }
 
-        // Listen for orientation changes but only apply them in main menu
-        gameState.observeAllowRotation(this) { allowRotation ->
-            if (currentScreen == "mainMenu" && allowRotation) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-                Log.d(TAG, "Main menu: Rotation enabled")
-            } else {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                Log.d(TAG, "Forcing portrait mode")
-            }
-        }
-
         Log.d(TAG, "App started successfully")
-    }
-
-    /**
-     * Update orientation based on current screen - only allow rotation in main menu
-     */
-    private fun updateRotationBasedOnScreen(screen: String) {
-        Log.d(TAG, "Screen changed to: $screen")
-
-        if (screen == "mainMenu" && gameState.getAllowRotation()) {
-            // Only allow rotation in main menu if setting is enabled
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-            Log.d(TAG, "Main menu: Rotation enabled")
-        } else {
-            // Force portrait for all other screens
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            Log.d(TAG, "Forcing portrait mode for screen: $screen")
-        }
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-
-        Log.d(TAG, "Configuration changed, orientation: " +
-                if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait")
-
-        // If not on main menu or rotation not allowed, force back to portrait
-        if (currentScreen != "mainMenu" || !gameState.getAllowRotation()) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            Log.d(TAG, "Forcing portrait mode after config change")
-        }
     }
 
     /**
@@ -170,9 +125,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         performanceMonitor.start()
-
-        // Re-apply rotation settings when resuming
-        updateRotationBasedOnScreen(currentScreen)
     }
 
     override fun onPause() {
@@ -264,10 +216,6 @@ private fun SetupNavigation(
                     onShowEnvironments = {
                         Log.d("Navigation", "Environments Guide button clicked")
                         navController.navigate("environments")
-                    },
-                    onToggleOrientation = { allowRotation ->
-                        Log.d("Navigation", "Toggling orientation: allow=$allowRotation")
-                        gameState.setAllowRotation(allowRotation)
                     }
                 )
 

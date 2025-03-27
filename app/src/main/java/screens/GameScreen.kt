@@ -1,10 +1,14 @@
 package com.lavrik.koalajump.screens
 
 import androidx.compose.ui.ExperimentalComposeUiApi
+import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import android.view.MotionEvent
 import androidx.compose.animation.core.*
@@ -41,6 +45,7 @@ import com.lavrik.koalajump.GameState
 import com.lavrik.koalajump.R
 import com.lavrik.koalajump.entities.AnimatedKoala
 import com.lavrik.koalajump.game.GameEnvironment
+import com.lavrik.koalajump.ui.components.AnimatedCloudsBackground
 import com.lavrik.koalajump.ui.components.EnhancedGameHUD
 import com.lavrik.koalajump.utils.EnvironmentAssetManager
 import com.lavrik.koalajump.utils.SoundManager
@@ -89,6 +94,7 @@ fun PauseButton(onClick: () -> Unit) {
 
 /**
  * Improved GameScreen with proper animation and game loop
+ * Now portrait-only with vibration feedback
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -102,10 +108,8 @@ fun GameScreen(
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Detect orientation
-    val isPortrait = remember(configuration) {
-        configuration.screenHeightDp > configuration.screenWidthDp
-    }
+    // Always portrait mode
+    val isPortrait = true
 
     // Screen dimensions
     val screenWidth = configuration.screenWidthDp.toFloat() * density.density
@@ -117,8 +121,12 @@ fun GameScreen(
     var lives by remember { mutableStateOf(3) }
     var currentLevel by remember { mutableStateOf(1) }
     var hasSpeedBoost by remember { mutableStateOf(false) }
+    var isInvincible by remember { mutableStateOf(false) } // Added for invincibility tracking
     var gameRunning by remember { mutableStateOf(true) }
     var invincibleTime by remember { mutableStateOf(0L) } // Invincibility after hit
+
+    // Add safe period after level up with no obstacles
+    var obstacleSafePeriod by remember { mutableStateOf(0L) }
 
     // Navigation tracking - prevent multiple navigation attempts
     var navigatedToGameOver by remember { mutableStateOf(false) }
@@ -134,18 +142,18 @@ fun GameScreen(
     var transitionAlpha by remember { mutableStateOf(0f) }
     var previousEnvironment by remember { mutableStateOf(gameState.currentEnvironment.value) }
 
-    // Level-up notification state
-    var showLevelUpMessage by remember { mutableStateOf(false) }
-    var levelUpMessageAlpha by remember { mutableStateOf(0f) }
-    var levelUpEnvironment by remember { mutableStateOf("") }
-
-    // Environment name display when transitioning
+    // Environment name display when transitioning (this replaces both notifications)
     var showEnvironmentInfo by remember { mutableStateOf(false) }
     var environmentInfoAlpha by remember { mutableStateOf(0f) }
 
-    // Create the animated koala with orientation awareness
+    // Create the animated koala - portrait mode only
     val koala = remember {
-        AnimatedKoala(context, screenWidth, screenHeight, isPortrait)
+        AnimatedKoala(context, screenWidth, screenHeight)
+    }
+
+    // Store koala in GameState for accessing from GameLoop
+    LaunchedEffect(koala) {
+        gameState.setKoala(koala)
     }
 
     // Tree, beer, and booster dimensions with scaling factor applied
@@ -156,18 +164,18 @@ fun GameScreen(
     val boosterWidth = 35f * OBJECT_SCALE_FACTOR
     val boosterHeight = 35f * OBJECT_SCALE_FACTOR
 
-    // Obstacles and collectibles
+    // Obstacles and collectibles - increased initial spacing
     var obstacles by remember { mutableStateOf(arrayOf(
-        screenWidth + 400f,
-        screenWidth + 800f,
-        screenWidth + 1200f
+        screenWidth + 650f,
+        screenWidth + 1300f,
+        screenWidth + 1950f
     )) }
 
     // FIXED: Initial collectibles positioning with correct Y offsets
     val collectibles = remember { mutableStateListOf(
         Collectible(screenWidth + 600f, groundY - 130f, true, false),
-        Collectible(screenWidth + 1000f, groundY - 110f, true, false),
-        Collectible(screenWidth + 1400f, groundY - 90f, true, true) // This one is a booster
+        Collectible(screenWidth + 1200f, groundY - 110f, true, false),
+        Collectible(screenWidth + 1800f, groundY - 90f, true, true) // This one is a booster
     ) }
 
     // Load game assets
@@ -175,6 +183,22 @@ fun GameScreen(
 
     // Environment asset manager
     val environmentAssetManager = remember { EnvironmentAssetManager(context) }
+
+    // Check if the current environment should have clouds
+    val shouldShowClouds = remember(gameState.currentEnvironment.value) {
+        val env = gameState.currentEnvironment.value
+        env == GameEnvironment.FOREST || env == GameEnvironment.DESERT || env == GameEnvironment.BEACH
+    }
+
+    // Get appropriate cloud color based on environment
+    val cloudColor = remember(gameState.currentEnvironment.value) {
+        when (gameState.currentEnvironment.value) {
+            GameEnvironment.FOREST -> Color.White.copy(alpha = 0.4f) // More faded for forest
+            GameEnvironment.DESERT -> Color(0xFFFFFFEE).copy(alpha = 0.3f) // Yellowish tint, very faded for desert
+            GameEnvironment.BEACH -> Color.White.copy(alpha = 0.5f) // Slightly more visible for beach
+            else -> Color.White.copy(alpha = 0.4f) // Default
+        }
+    }
 
     // Preload assets when the game starts
     LaunchedEffect(Unit) {
@@ -212,36 +236,6 @@ fun GameScreen(
     LaunchedEffect(Unit) {
         gameState.resetForNewGame()
         soundManager.setSoundEnabled(gameState.soundEnabled.value)
-    }
-
-    // Handle orientation changes
-    LaunchedEffect(configuration) {
-        // Update koala with new screen dimensions and orientation
-        val newIsPortrait = configuration.screenHeightDp > configuration.screenWidthDp
-
-        // Update koala with new screen dimensions
-        koala.screenWidth = screenWidth
-        koala.screenHeight = screenHeight
-        koala.updateOrientation(newIsPortrait)
-
-        // Update positions of game objects
-        // This ensures obstacles and collectibles maintain their relative positions
-        val ratio = if (newIsPortrait) 0.78f else 0.73f
-        val adjustedGroundY = screenHeight * ratio - koala.height
-
-        // Reposition collectibles for new ground level
-        val newCollectibles = mutableListOf<Collectible>()
-        collectibles.forEachIndexed { index, collectible ->
-            if (collectible.active) {
-                val newY = adjustedGroundY - (if (collectible.isBooster) boosterHeight else beerHeight) -
-                        (collectible.y - (groundY - (if (collectible.isBooster) boosterHeight else beerHeight)))
-                newCollectibles.add(Collectible(collectible.x, newY, collectible.active, collectible.isBooster))
-            } else {
-                newCollectibles.add(collectible)
-            }
-        }
-        collectibles.clear()
-        collectibles.addAll(newCollectibles)
     }
 
     // Track environment changes and trigger transition
@@ -302,10 +296,14 @@ fun GameScreen(
         }
     }
 
-    // Track environment changes and notify player
-    LaunchedEffect(gameState.currentEnvironment.value) {
-        // Don't show for the initial environment
+    // Track level changes and show notification - COMBINED with environment info
+    LaunchedEffect(gameState.currentLevel.value) {
+        // Don't show for the initial level
         if (gameState.currentLevel.value > 1) {
+            // Add safe period for obstacles (2 seconds)
+            obstacleSafePeriod = System.currentTimeMillis() + 2000
+
+            // Show environment info with level details
             showEnvironmentInfo = true
 
             // Fade in animation
@@ -353,58 +351,6 @@ fun GameScreen(
         }
     }
 
-    // Track level changes and show notification
-    LaunchedEffect(gameState.currentLevel.value) {
-        // Don't show for the initial level
-        if (gameState.currentLevel.value > 1) {
-            showLevelUpMessage = true
-            levelUpEnvironment = gameState.currentEnvironment.value.levelName
-
-            // Fade in animation
-            val fadeInAnimation = TargetBasedAnimation(
-                animationSpec = tween(500, easing = LinearEasing),
-                typeConverter = Float.VectorConverter,
-                initialValue = 0f,
-                targetValue = 1f
-            )
-
-            var playTime = 0L
-            val startTime = withFrameNanos { it }
-
-            // Play fade-in animation
-            while (playTime < fadeInAnimation.durationNanos) {
-                playTime = withFrameNanos { it } - startTime
-                levelUpMessageAlpha = fadeInAnimation.getValueFromNanos(playTime)
-                yield()
-            }
-
-            // Show message for a few seconds
-            delay(2000)
-
-            // Fade out animation
-            val fadeOutAnimation = TargetBasedAnimation(
-                animationSpec = tween(500, easing = LinearEasing),
-                typeConverter = Float.VectorConverter,
-                initialValue = 1f,
-                targetValue = 0f
-            )
-
-            playTime = 0L
-            val fadeOutStartTime = withFrameNanos { it }
-
-            // Play fade-out animation
-            while (playTime < fadeOutAnimation.durationNanos) {
-                playTime = withFrameNanos { it } - fadeOutStartTime
-                levelUpMessageAlpha = fadeOutAnimation.getValueFromNanos(playTime)
-                yield()
-            }
-
-            // Reset notification state
-            showLevelUpMessage = false
-            levelUpMessageAlpha = 0f
-        }
-    }
-
     // Helper function for collision detection
     fun checkRectOverlap(rect1: Rect, rect2: Rect): Boolean {
         return rect1.left < rect2.right &&
@@ -435,6 +381,26 @@ fun GameScreen(
         }
     }
 
+    // Helper function for vibration
+    fun vibrateDevice() {
+        if (gameState.vibrationEnabled.value) {
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(200)
+            }
+        }
+    }
+
     // Game physics loop
     LaunchedEffect(Unit) {
         while (gameRunning && gameState.isGameActive.value && !isGameOver) {
@@ -449,62 +415,79 @@ fun GameScreen(
                     // Get koala hitbox
                     val koalaHitbox = koala.getBounds()
 
-                    // Move obstacles
-                    val effectiveSpeed = 12f * (if (hasSpeedBoost) 1.5f else 1.0f) * gameState.currentEnvironment.value.speedMultiplier
+                    // Move obstacles - respect obstacle safe period
+                    val gameTime = currentTime - obstacleSafePeriod
+                    val startingSpeedFactor = minOf(1.0f, gameTime / 10000f) // Ramps up over 10 seconds
+                    val effectiveSpeed = 16f * (if (hasSpeedBoost) 1.5f else 1.0f) * gameState.currentEnvironment.value.speedMultiplier * startingSpeedFactor
                     val newObstacles = obstacles.copyOf()
+                    val isSafePeriod = currentTime < obstacleSafePeriod
 
                     for (i in obstacles.indices) {
+                        // Move existing obstacles even during safe period
                         newObstacles[i] -= effectiveSpeed
 
                         // Reset obstacle when offscreen
                         if (newObstacles[i] < -treeWidth) {
+                            // Find the furthest obstacle
                             val furthestObstacle = newObstacles.maxOrNull() ?: screenWidth
 
                             // Increase spacing between trees when booster is active
-                            val baseSpacing = 400f
-                            val randomVariation = (Math.random() * 200).toFloat()
+                            val baseSpacing = 650f  // Increased spacing
+                            val randomVariation = (Math.random() * 300).toFloat()  // Increased variation
 
                             // Add 75% more space between trees when boosted
                             val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
 
-                            newObstacles[i] = furthestObstacle + (baseSpacing * boostSpacingMultiplier) + randomVariation
+                            // During safe period, move obstacles completely off screen
+                            if (isSafePeriod) {
+                                newObstacles[i] = furthestObstacle + (baseSpacing * 3) + randomVariation
+                            } else {
+                                newObstacles[i] = furthestObstacle + (baseSpacing * boostSpacingMultiplier) + randomVariation
+                            }
                         }
 
-                        // Create obstacle hitbox - FIXED: Use adjusted height for proper collision
-                        val treeHitbox = Rect(
-                            left = newObstacles[i],
-                            top = groundY - treeHeight,
-                            right = newObstacles[i] + treeWidth,
-                            bottom = groundY
-                        )
+                        // Skip collision checks during safe period or if invincible
+                        if (!isSafePeriod && !isInvincible) {
+                            // Create obstacle hitbox - FIXED: Use adjusted height for proper collision
+                            val treeHitbox = Rect(
+                                left = newObstacles[i],
+                                top = groundY - treeHeight,
+                                right = newObstacles[i] + treeWidth,
+                                bottom = groundY
+                            )
 
-                        // Check for collision with koala - only if not invincible
-                        if (currentTime > invincibleTime && !koala.isJumping && checkRectOverlap(koalaHitbox, treeHitbox)) {
-                            // Collision!
-                            soundManager.playHitSound()
-                            lives--
-                            gameState.lives.value = lives // Update game state lives
+                            // Check for collision with koala - only if not invincible
+                            if (currentTime > invincibleTime && !koala.isJumping && checkRectOverlap(koalaHitbox, treeHitbox)) {
+                                // Collision!
+                                soundManager.playHitSound()
 
-                            // Set invincibility for 2 seconds
-                            invincibleTime = currentTime + 2000
+                                // Add vibration on collision
+                                vibrateDevice()
 
-                            // Push obstacle away
-                            newObstacles[i] = screenWidth + 200f
+                                lives--
+                                gameState.lives.value = lives // Update game state lives
 
-                            // Check if game over
-                            if (lives <= 0) {
-                                // Critical fix: Update game state and set isGameOver flag
-                                gameState.updateScore(score)
-                                gameState.endGame()
-                                gameRunning = false
-                                isGameOver = true
+                                // Set invincibility for 2 seconds
+                                invincibleTime = currentTime + 2000
 
-                                // ADDED: Play game over sound before navigating
-                                soundManager.playGameOverSound()
+                                // Push obstacle away
+                                newObstacles[i] = screenWidth + 200f
 
-                                // Use the improved safe navigation function
-                                safeNavigateToGameOver()
-                                break
+                                // Check if game over
+                                if (lives <= 0) {
+                                    // Critical fix: Update game state and set isGameOver flag
+                                    gameState.updateScore(score)
+                                    gameState.endGame()
+                                    gameRunning = false
+                                    isGameOver = true
+
+                                    // ADDED: Play game over sound before navigating
+                                    soundManager.playGameOverSound()
+
+                                    // Use the improved safe navigation function
+                                    safeNavigateToGameOver()
+                                    break
+                                }
                             }
                         }
                     }
@@ -516,13 +499,32 @@ fun GameScreen(
 
                     obstacles = newObstacles
 
-                    // Move collectibles - fixed implementation
+                    // Move collectibles - improved implementation with magnet effect
                     for (i in collectibles.indices) {
                         val collectible = collectibles[i]
 
                         if (collectible.active) {
-                            // Move left if active
-                            val newX = collectible.x - effectiveSpeed
+                            // Default movement
+                            var newX = collectible.x - effectiveSpeed
+                            var newY = collectible.y
+
+                            // Collectible magnet effect during boost
+                            if (hasSpeedBoost) {
+                                // Calculate distance to koala
+                                val dx = koala.x - newX
+                                val dy = koala.y - newY
+                                val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                                // If within range, move collectible toward koala
+                                if (distance < 200f) {
+                                    val attractionSpeed = 10f
+                                    val moveX = dx * attractionSpeed / distance
+                                    val moveY = dy * attractionSpeed / distance
+
+                                    newX += moveX
+                                    newY += moveY
+                                }
+                            }
 
                             // Determine the collectible dimensions based on type
                             val collectibleWidth = if (collectible.isBooster) boosterWidth else beerWidth
@@ -531,28 +533,36 @@ fun GameScreen(
                             // Create collectible hitbox
                             val collectibleHitbox = Rect(
                                 left = newX,
-                                top = collectible.y,
+                                top = newY,
                                 right = newX + collectibleWidth,
-                                bottom = collectible.y + collectibleHeight
+                                bottom = newY + collectibleHeight
                             )
 
                             // Check for collection using proper hitbox collision
                             if (checkRectOverlap(koalaHitbox, collectibleHitbox)) {
                                 // Collected!
                                 soundManager.playCollectSound()
-                                score += gameState.currentEnvironment.value.collectibleValue
+
+                                // Apply score multiplier during boost
+                                val pointValue = gameState.currentEnvironment.value.collectibleValue * (if (hasSpeedBoost) 2 else 1)
+                                score += pointValue
 
                                 // Update to inactive state
-                                collectibles[i] = Collectible(newX, collectible.y, false, collectible.isBooster)
+                                collectibles[i] = Collectible(newX, newY, false, collectible.isBooster)
 
-                                // If it's a booster, give speed boost
+                                // Handle booster collectibles
                                 if (collectible.isBooster) {
                                     hasSpeedBoost = true
+                                    isInvincible = true // Set invincibility when collected
                                     koala.setPowerUpState(true) // Set koala power-up state
+                                    koala.setInvincibleState(true) // Set koala invincibility state
+
                                     coroutineScope.launch {
                                         delay(5000)
                                         hasSpeedBoost = false
-                                        koala.setPowerUpState(false) // Reset koala power-up state
+                                        isInvincible = false
+                                        koala.setPowerUpState(false)
+                                        koala.setInvincibleState(false)
                                     }
                                 }
 
@@ -564,8 +574,8 @@ fun GameScreen(
                                     val furthestX = collectibles.maxOf { it.x }
 
                                     // Respawn at new position with same type (booster or regular)
-                                    val baseSpacing = 600f
-                                    val randomVariation = (Math.random() * 400).toFloat()
+                                    val baseSpacing = 650f // Increased spacing to match obstacles
+                                    val randomVariation = (Math.random() * 300).toFloat() // Increased variation
 
                                     // Add 75% more space when boosted (matching tree spacing)
                                     val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
@@ -581,8 +591,8 @@ fun GameScreen(
                                 // Reset if off screen
                                 val furthestX = collectibles.maxOf { it.x }
 
-                                val baseSpacing = 600f
-                                val randomVariation = (Math.random() * 400).toFloat()
+                                val baseSpacing = 650f // Increased spacing to match obstacles
+                                val randomVariation = (Math.random() * 300).toFloat() // Increased variation
 
                                 // Add 75% more space when boosted
                                 val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
@@ -595,7 +605,7 @@ fun GameScreen(
                                 )
                             } else {
                                 // Just update position
-                                collectibles[i] = Collectible(newX, collectible.y, collectible.active, collectible.isBooster)
+                                collectibles[i] = Collectible(newX, newY, collectible.active, collectible.isBooster)
                             }
                         }
                     }
@@ -672,6 +682,12 @@ fun GameScreen(
                 size = this.size
             )
 
+            // Add clouds in selected environments (Forest, Desert, Beach)
+            if (shouldShowClouds) {
+                // We can't directly draw clouds here since they're animated
+                // The AnimatedCloudsBackground will be added as a separate composable
+            }
+
             // Draw ground with environment ground color
             drawRect(
                 color = gameState.currentEnvironment.value.groundColor,
@@ -690,7 +706,7 @@ fun GameScreen(
             val currentTime = System.currentTimeMillis()
             val isVisible = currentTime > invincibleTime || (currentTime / 200) % 2 == 0L
 
-            if (isVisible) {
+            if (isVisible || hasSpeedBoost) {
                 // Draw koala using our AnimatedKoala class
                 koala.draw(this)
             }
@@ -781,12 +797,23 @@ fun GameScreen(
             }
         }
 
+        // Add animated clouds as an overlay for selected environments (with low opacity)
+        if (shouldShowClouds) {
+            // Add faded clouds with environment-specific opacity
+            AnimatedCloudsBackground(
+                cloudColor = cloudColor,
+                // Make clouds move a bit slower for better visual effect
+                speedMultiplier = 0.7f
+            )
+        }
+
         // Enhanced HUD
         EnhancedGameHUD(
             score = score,
             level = currentLevel,
             lives = lives,
             hasSpeedBoost = hasSpeedBoost,
+            isInvincible = isInvincible, // Added invincibility parameter
             environment = gameState.currentEnvironment.value
         )
 
@@ -799,7 +826,7 @@ fun GameScreen(
             PauseButton(onClick = { isGamePaused = true })
         }
 
-        // Environment info notification display
+        // Environment info notification with level details (combined notification)
         if (showEnvironmentInfo) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -823,9 +850,10 @@ fun GameScreen(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        // Combined level up and environment notification
                         Text(
-                            text = "NEW ENVIRONMENT!",
-                            fontSize = 24.sp,
+                            text = "LEVEL ${currentLevel}",
+                            fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF4CAF50)
                         )
@@ -833,8 +861,8 @@ fun GameScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "${environment.levelName}",
-                            fontSize = 28.sp,
+                            text = "${environment.levelName} Environment",
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF9C27B0)
                         )
@@ -871,56 +899,13 @@ fun GameScreen(
                                 )
                             }
                         }
-                    }
-                }
-            }
-        }
 
-        // Level-up notification display
-        if (showLevelUpMessage) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .graphicsLayer(alpha = levelUpMessageAlpha),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xCCFFFFFF)
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 8.dp
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                        // Show points value
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "LEVEL UP!",
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF4CAF50)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Entering $levelUpEnvironment",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Level $currentLevel",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF9C27B0)
+                            text = "Worth ${environment.collectibleValue} points each",
+                            fontSize = 16.sp,
+                            color = Color(0xFF333333)
                         )
                     }
                 }

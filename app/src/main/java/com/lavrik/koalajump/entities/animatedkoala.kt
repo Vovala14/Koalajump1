@@ -3,50 +3,57 @@ package com.lavrik.koalajump.entities
 import android.content.Context
 import android.graphics.Movie
 import android.graphics.Paint
-import android.graphics.RectF
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import com.lavrik.koalajump.R
 import java.io.InputStream
+import kotlin.math.sin
 
 /**
  * Animated koala character using a standard GIF animation
- * With improved landscape positioning
+ * Portrait mode only
  */
 class AnimatedKoala(
     private val context: Context,
-    var screenWidth: Float,  // Changed from val to var to allow updates
-    var screenHeight: Float, // Changed from val to var to allow updates
-    var isPortrait: Boolean = true
+    var screenWidth: Float,
+    var screenHeight: Float
 ) {
     companion object {
         private const val TAG = "AnimatedKoala"
         private const val HITBOX_REDUCTION_PERCENT = 0.15f
 
-        // Physics constants - adjusted for 50% larger koala
-        private const val PORTRAIT_JUMP_VELOCITY = -23.5f
-        private const val LANDSCAPE_JUMP_VELOCITY = -23f
-        private const val PORTRAIT_GRAVITY = 1.8f
-        private const val LANDSCAPE_GRAVITY = 1.5f
+        // Portrait physics constants only
+        private const val JUMP_VELOCITY = -23.5f
+        private const val GRAVITY = 1.8f
 
-        // Updated ground ratio values for better positioning
-        private const val PORTRAIT_GROUND_RATIO = 0.78f    // 78% of screen height
+        // Portrait positioning constants
+        private const val GROUND_RATIO = 0.78f    // 78% of screen height
+        private const val X_RATIO = 0.25f         // 25% from left
 
-        // FIXED: Reduced from 0.68f to 0.60f for better landscape position
-        private const val LANDSCAPE_GROUND_RATIO = 0.77f
+        // Fixed size dimensions
+        private const val TARGET_WIDTH = 83 // 50% larger than original
+        private const val TARGET_HEIGHT = 83 // 50% larger than original
 
-        // FIXED: Add horizontal position constants for better control
-        private const val PORTRAIT_X_RATIO = 0.25f         // 25% from left in portrait
-        private const val LANDSCAPE_X_RATIO = 0.20f        // 20% from left in landscape
+        // Power-up visual effect constants
+        private const val POWER_UP_GLOW_ALPHA = 0x55      // Semi-transparent
+        private const val POWER_UP_GLOW_COLOR = 0xFFAA00  // Orange
+        private const val POWER_UP_GLOW_RADIUS_FACTOR = 1.2f  // Smaller glow
+        private const val POWER_UP_SPEED_LINE_LENGTH_FACTOR = 2.0f
+        private const val POWER_UP_SPEED_LINE_ALPHA = 0x44 // Semi-transparent
+        private const val POWER_UP_PULSE_PERIOD = 500      // Milliseconds
+        private const val POWER_UP_PULSE_MAGNITUDE = 0.05f // 5% size variation
 
-        // Fixed size dimensions - increased by 50%
-        private const val TARGET_WIDTH = 83 // Increased from 55 to 83 (50% larger)
-        private const val TARGET_HEIGHT = 83 // Increased from 55 to 83 (50% larger)
+        // Invincibility effect constants
+        private const val INVINCIBILITY_FLASH_PERIOD = 200  // Milliseconds per flash cycle
+        private const val INVINCIBILITY_SHIELD_COLOR = 0x3399CCFF // Light blue shield
+        private const val INVINCIBILITY_SHIELD_ALPHA = 0x60 // More transparent
+        private const val INVINCIBILITY_SHIELD_RADIUS_FACTOR = 1.1f // Just slightly larger than koala
     }
 
     // GIF animation using Android's Movie class
@@ -62,12 +69,13 @@ class AnimatedKoala(
 
     // Jump properties
     var isJumping = false
-    private var jumpVelocity = if (isPortrait) PORTRAIT_JUMP_VELOCITY else LANDSCAPE_JUMP_VELOCITY
-    private var gravity = if (isPortrait) PORTRAIT_GRAVITY else LANDSCAPE_GRAVITY
-    var groundY: Float // Changed to var to access from outside
+    private var jumpVelocity = JUMP_VELOCITY
+    private var gravity = GRAVITY
+    var groundY: Float
 
     // Power-up state
     var isPoweredUp = false
+    var isInvincible = false // Property for invincibility status
 
     // Reusable Paint for drawing
     private val paint = Paint().apply {
@@ -96,22 +104,14 @@ class AnimatedKoala(
             koalaAnimation = null
         }
 
-        // FIXED: Improved horizontal positioning ratio
-        x = if (isPortrait) {
-            screenWidth * PORTRAIT_X_RATIO
-        } else {
-            screenWidth * LANDSCAPE_X_RATIO
-        }
+        // Set horizontal position - portrait mode only
+        x = screenWidth * X_RATIO
 
-        // Set ground Y position with proper adjustment for scaled height
-        groundY = if (isPortrait) {
-            screenHeight * PORTRAIT_GROUND_RATIO - height
-        } else {
-            screenHeight * LANDSCAPE_GROUND_RATIO - height
-        }
+        // Set ground Y position
+        groundY = screenHeight * GROUND_RATIO - height
         y = groundY
 
-        Log.d(TAG, "Koala initialized at x=$x, y=$y, groundY=$groundY, screenHeight=$screenHeight, orientation=${if(isPortrait) "portrait" else "landscape"}")
+        Log.d(TAG, "Koala initialized at x=$x, y=$y, groundY=$groundY, screenHeight=$screenHeight")
     }
 
     /**
@@ -130,7 +130,7 @@ class AnimatedKoala(
             if (y >= groundY) {
                 y = groundY
                 isJumping = false
-                jumpVelocity = if (isPortrait) PORTRAIT_JUMP_VELOCITY else LANDSCAPE_JUMP_VELOCITY
+                jumpVelocity = JUMP_VELOCITY
             }
         }
 
@@ -138,7 +138,7 @@ class AnimatedKoala(
     }
 
     /**
-     * Draw the koala using the GIF animation
+     * Draw the koala using the GIF animation with power-up visual effects
      */
     fun draw(drawScope: DrawScope) {
         val animation = if (isPoweredUp && powerUpAnimation != null) {
@@ -155,11 +155,49 @@ class AnimatedKoala(
             // Set the current animation frame time
             animation.setTime(relTime)
 
-            // Scale factor based on orientation - increased by 50%
-            val scaleFactor = if (isPortrait) 1.5f else 1.275f // Increased from 1.0f/0.85f
+            // Scale factor - portrait mode only
+            val scaleFactor = 1.5f
 
             // Get the native canvas from the DrawScope
             val canvas = drawScope.drawContext.canvas.nativeCanvas
+
+            // Add invincibility shield effect (when invincible)
+            if (isInvincible) {
+                // Determine if koala should be visible based on flash timing
+                val isVisible = ((now / INVINCIBILITY_FLASH_PERIOD) % 2 == 0L)
+
+                // Draw invincibility shield (pulsing blue circle)
+                val shieldPulse = 1.0f + (sin(now / 200.0 * Math.PI) * 0.05).toFloat()
+                drawScope.drawCircle(
+                    color = Color(INVINCIBILITY_SHIELD_COLOR).copy(alpha = INVINCIBILITY_SHIELD_ALPHA / 255f),
+                    radius = width * INVINCIBILITY_SHIELD_RADIUS_FACTOR * shieldPulse,
+                    center = Offset(x + width / 2, y + height / 2)
+                )
+
+                // If in flash-invisible state, return early to skip drawing koala
+                if (!isVisible && !isPoweredUp) {
+                    return
+                }
+            }
+
+            // Add power-up visual effects before drawing koala
+            if (isPoweredUp) {
+                // Draw a glowing aura around koala
+                drawScope.drawCircle(
+                    color = Color(POWER_UP_GLOW_COLOR).copy(alpha = POWER_UP_GLOW_ALPHA / 255f),
+                    radius = width * POWER_UP_GLOW_RADIUS_FACTOR,
+                    center = Offset(x + width / 2, y + height / 2)
+                )
+
+                // Draw speed lines behind koala
+                val speedLineLength = width * POWER_UP_SPEED_LINE_LENGTH_FACTOR
+                drawScope.drawLine(
+                    start = Offset(x - speedLineLength, y + height / 2),
+                    end = Offset(x, y + height / 2),
+                    color = Color.White.copy(alpha = POWER_UP_SPEED_LINE_ALPHA / 255f),
+                    strokeWidth = 5f
+                )
+            }
 
             // Save the canvas state
             canvas.save()
@@ -168,9 +206,24 @@ class AnimatedKoala(
             val scaleX = (TARGET_WIDTH * scaleFactor) / animation.width()
             val scaleY = (TARGET_HEIGHT * scaleFactor) / animation.height()
 
+            // Apply pulsing effect for power-up
+            val actualScaleX: Float
+            val actualScaleY: Float
+
+            if (isPoweredUp) {
+                // Add pulsing effect
+                val pulsePhase = (now % POWER_UP_PULSE_PERIOD) / POWER_UP_PULSE_PERIOD.toFloat() * (Math.PI * 2)
+                val pulseFactor = 1.0f + (sin(pulsePhase) * POWER_UP_PULSE_MAGNITUDE).toFloat()
+                actualScaleX = scaleX * pulseFactor
+                actualScaleY = scaleY * pulseFactor
+            } else {
+                actualScaleX = scaleX
+                actualScaleY = scaleY
+            }
+
             // Translate and scale
             canvas.translate(x, y)
-            canvas.scale(scaleX, scaleY)
+            canvas.scale(actualScaleX, actualScaleY)
 
             // Draw the GIF frame
             animation.draw(canvas, 0f, 0f, paint)
@@ -180,9 +233,9 @@ class AnimatedKoala(
         } else {
             // Fallback - draw a placeholder rectangle
             val debugColor = if (isPoweredUp)
-                androidx.compose.ui.graphics.Color.Yellow
+                Color.Yellow
             else
-                androidx.compose.ui.graphics.Color.Blue
+                Color.Blue
 
             drawScope.drawRect(
                 color = debugColor,
@@ -210,7 +263,7 @@ class AnimatedKoala(
     fun jump() {
         if (!isJumping) {
             isJumping = true
-            jumpVelocity = if (isPortrait) PORTRAIT_JUMP_VELOCITY else LANDSCAPE_JUMP_VELOCITY
+            jumpVelocity = JUMP_VELOCITY
         }
     }
 
@@ -234,26 +287,14 @@ class AnimatedKoala(
     }
 
     /**
-     * Update position for new orientation - ensures koala stays in correct position
-     * FIXED: Improved landscape positioning
+     * Update position for new screen dimensions
      */
-    fun updatePositionForNewOrientation() {
-        // FIXED: Reposition koala based on screen dimensions with improved ratios
-        x = if (isPortrait) {
-            screenWidth * PORTRAIT_X_RATIO
-        } else {
-            screenWidth * LANDSCAPE_X_RATIO
-        }
+    fun updatePosition() {
+        // Calculate new position based on screen dimensions
+        x = screenWidth * X_RATIO
 
-        // Recalculate ground position with more precise ratio
-        groundY = if (isPortrait) {
-            screenHeight * PORTRAIT_GROUND_RATIO - height
-        } else {
-            screenHeight * LANDSCAPE_GROUND_RATIO - height
-        }
-
-        // Explicitly log the ground position for debugging
-        Log.d(TAG, "Ground position updated: $groundY, screen height: $screenHeight, orientation: ${if(isPortrait) "portrait" else "landscape"}")
+        // Recalculate ground position
+        groundY = screenHeight * GROUND_RATIO - height
 
         // If not actively jumping, place on ground
         if (!isJumping) {
@@ -267,27 +308,17 @@ class AnimatedKoala(
     }
 
     /**
-     * Update orientation settings with improved handling for transitions
-     */
-    fun updateOrientation(portrait: Boolean) {
-        val oldPortrait = isPortrait
-        isPortrait = portrait
-
-        // Update physics parameters for new orientation
-        jumpVelocity = if (isPortrait) PORTRAIT_JUMP_VELOCITY else LANDSCAPE_JUMP_VELOCITY
-        gravity = if (isPortrait) PORTRAIT_GRAVITY else LANDSCAPE_GRAVITY
-
-        // Only reposition if orientation actually changed
-        if (oldPortrait != portrait) {
-            updatePositionForNewOrientation()
-        }
-    }
-
-    /**
      * Set power-up state to change koala appearance
      */
     fun setPowerUpState(powered: Boolean) {
         isPoweredUp = powered
+    }
+
+    /**
+     * Set invincibility state
+     */
+    fun setInvincibleState(invincible: Boolean) {
+        isInvincible = invincible
     }
 
     /**

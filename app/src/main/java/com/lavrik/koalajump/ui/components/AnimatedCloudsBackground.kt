@@ -7,13 +7,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import kotlin.random.Random
 
+// Move CloudData outside of the composable function and make it internal
+// so it can be accessed by other files in the same package
+internal data class CloudData(
+    val startX: Float,
+    val y: Float,
+    val speed: Long,
+    val scale: Float
+)
+
 @Composable
 fun AnimatedCloudsBackground(
-    cloudColor: Color = Color.White.copy(alpha = 0.7f)
+    cloudColor: Color = Color.White.copy(alpha = 0.7f),
+    speedMultiplier: Float = 1.0f // Added parameter to control animation speed
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "clouds")
 
@@ -23,7 +32,7 @@ fun AnimatedCloudsBackground(
             CloudData(
                 startX = Random.nextFloat() * 1200,
                 y = 100f + (index * 80),
-                speed = 20000 + (Random.nextFloat() * 40000).toLong(),
+                speed = (20000 + (Random.nextFloat() * 40000)).toLong(),
                 scale = 0.7f + (Random.nextFloat() * 0.6f)
             )
         }
@@ -36,7 +45,8 @@ fun AnimatedCloudsBackground(
             targetValue = 1400f,
             animationSpec = infiniteRepeatable(
                 animation = tween(
-                    durationMillis = cloudData.speed.toInt(),
+                    // Adjust animation duration with speed multiplier
+                    durationMillis = (cloudData.speed / speedMultiplier).toInt(),
                     easing = LinearEasing
                 ),
                 repeatMode = RepeatMode.Restart
@@ -57,8 +67,6 @@ fun AnimatedCloudsBackground(
         }
     }
 }
-
-// Using the now-shared CloudData class from AnimatedCloudsBackground.kt
 
 private fun DrawScope.drawCloud(
     x: Float,

@@ -4,30 +4,28 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.Observer
+import com.lavrik.koalajump.entities.AnimatedKoala
 import com.lavrik.koalajump.game.GameEnvironment
 
 /**
  * Central game state manager with improved state handling and persistence
+ * Orientation handling removed - portrait mode only
  */
 class GameState(private val context: Context) {
     companion object {
         private const val TAG = "GameState"
         private const val INITIAL_LIVES = 3
         private const val INITIAL_LEVEL = 1
-        private const val INITIAL_SPEED = 12f  // Increased from 10f for faster gameplay
-        private const val SPEED_INCREASE_PER_LEVEL = 0.8f  // Increased from 0.5f for more challenge
+        private const val INITIAL_SPEED = 16f  // Increased from 12f to 16f for faster gameplay
+        private const val SPEED_INCREASE_PER_LEVEL = 1.2f  // Increased from 0.8f to 1.2f for more challenge
         private const val MAX_LIVES = 5
-        private const val MAX_GAME_SPEED = 25f  // New constant to cap max speed
+        private const val MAX_GAME_SPEED = 35f  // Increased from 25f to 35f to cap max speed
 
         // Preference keys
         private const val PREFS_NAME = "game_prefs"
         private const val KEY_HIGH_SCORE = "high_score"
         private const val KEY_SOUND_ENABLED = "sound_enabled"
         private const val KEY_VIBRATION_ENABLED = "vibration_enabled"
-        private const val KEY_ALLOW_ROTATION = "allow_rotation"
     }
 
     // SharedPreferences for persistent storage
@@ -39,9 +37,6 @@ class GameState(private val context: Context) {
     // Game Over state - renamed to avoid clash
     private var _gameOverState = false
     val gameOverState: Boolean get() = _gameOverState
-
-    // Orientation preference - using a private MutableLiveData with public accessor methods
-    private val allowRotation = MutableLiveData(loadAllowRotation())
 
     // Scoring
     val score = mutableStateOf(0)
@@ -74,6 +69,9 @@ class GameState(private val context: Context) {
     val soundEnabled = mutableStateOf(loadSoundSetting())
     val vibrationEnabled = mutableStateOf(loadVibrationSetting())
 
+    // Koala reference for visual effects
+    private var koala: AnimatedKoala? = null
+
     // Private methods to load settings from SharedPreferences with backup recovery
     private fun loadHighScore(): Int {
         // Try to load from primary location
@@ -103,22 +101,18 @@ class GameState(private val context: Context) {
 
     private fun loadVibrationSetting(): Boolean = prefs.getBoolean(KEY_VIBRATION_ENABLED, true)
 
-    private fun loadAllowRotation(): Boolean = prefs.getBoolean(KEY_ALLOW_ROTATION, false)
-
     /**
-     * Get the allow rotation value
+     * Set the koala reference for power-up effects
      */
-    fun getAllowRotation(): Boolean {
-        return allowRotation.value ?: false
+    fun setKoala(newKoala: AnimatedKoala) {
+        koala = newKoala
     }
 
     /**
-     * Set allow rotation value and save to preferences
+     * Get the koala for visual effects
      */
-    fun setAllowRotation(allow: Boolean) {
-        prefs.edit().putBoolean(KEY_ALLOW_ROTATION, allow).apply()
-        allowRotation.value = allow
-        Log.d(TAG, "Allow rotation set to: $allow and saved to preferences")
+    fun getKoala(): AnimatedKoala? {
+        return koala
     }
 
     /**
@@ -135,13 +129,6 @@ class GameState(private val context: Context) {
     fun saveVibrationSetting(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_VIBRATION_ENABLED, enabled).apply()
         Log.d(TAG, "Vibration setting saved: $enabled")
-    }
-
-    /**
-     * Observe allow rotation changes
-     */
-    fun observeAllowRotation(owner: LifecycleOwner, observer: Observer<Boolean>) {
-        allowRotation.observe(owner, observer)
     }
 
     /**
@@ -382,14 +369,6 @@ class GameState(private val context: Context) {
         saveVibrationSetting(vibrationEnabled.value)
 
         Log.d(TAG, "Vibration ${if (vibrationEnabled.value) "enabled" else "disabled"}")
-    }
-
-    /**
-     * Toggle orientation locking
-     */
-    fun toggleOrientationLock() {
-        setAllowRotation(!getAllowRotation())
-        Log.d(TAG, "Orientation lock ${if (getAllowRotation()) "disabled" else "enabled"}")
     }
 
     /**
