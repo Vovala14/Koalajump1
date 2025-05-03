@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
     // Utility classes
     lateinit var bitmapManager: BitmapManager
     lateinit var performanceMonitor: PerformanceMonitor
+    lateinit var gameInterface: GameInterface
 
     // Game state - accessible throughout the app
     private lateinit var gameState: GameState
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
         // Initialize utilities
         bitmapManager = BitmapManager(this)
         performanceMonitor = PerformanceMonitor()
+        gameInterface = GameInterface(this, this)
 
         // Initialize game state with context
         gameState = GameState(this)
@@ -85,14 +87,15 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Pass gameState and showTutorial flag to GameNavigation
+                    // Pass gameState, showTutorial flag, and gameInterface to GameNavigation
                     GameNavigation(
                         gameState = gameState,
                         showTutorial = isFirstLaunch,
                         onScreenChange = { screen ->
                             // Update current screen
                             currentScreen = screen
-                        }
+                        },
+                        gameInterface = gameInterface // Pass gameInterface directly here
                     )
                 }
             }
@@ -155,12 +158,14 @@ class MainActivity : ComponentActivity() {
  * @param gameState The central game state to pass to all screens
  * @param showTutorial Flag indicating if the tutorial should be shown
  * @param onScreenChange Callback when navigation changes screens
+ * @param gameInterface The interface for leaderboard/score submission
  */
 @Composable
 fun GameNavigation(
     gameState: GameState,
     showTutorial: Boolean,
-    onScreenChange: (String) -> Unit
+    onScreenChange: (String) -> Unit,
+    gameInterface: GameInterface
 ) {
     Log.d("GameNavigation", "Starting navigation")
 
@@ -177,7 +182,7 @@ fun GameNavigation(
     }
 
     // Remember the navigation controller to pass with gameState
-    SetupNavigation(navController, gameState, tutorialCompleted)
+    SetupNavigation(navController, gameState, tutorialCompleted, gameInterface)
 }
 
 /**
@@ -187,7 +192,8 @@ fun GameNavigation(
 private fun SetupNavigation(
     navController: NavHostController,
     gameState: GameState,
-    tutorialCompleted: MutableState<Boolean>
+    tutorialCompleted: MutableState<Boolean>,
+    gameInterface: GameInterface
 ) {
     NavHost(
         navController = navController,
@@ -243,7 +249,7 @@ private fun SetupNavigation(
 
         composable("gameOver") {
             Log.d("Navigation", "Showing Game Over Screen")
-            // Pass all required parameters to GameOverScreen
+            // Pass all required parameters to GameOverScreen including GameInterface
             GameOverScreen(
                 gameState = gameState,
                 onRestart = {
@@ -259,13 +265,14 @@ private fun SetupNavigation(
                         popUpTo("mainMenu") { inclusive = true }
                     }
                 },
-                navController = navController
+                navController = navController,
+                gameInterface = gameInterface // Pass GameInterface directly
             )
         }
 
         composable("leaderboard") {
             Log.d("Navigation", "Showing Leaderboard")
-            // Pass gameState to LeaderboardScreen
+            // Pass gameState to LeaderboardScreen, remove gameInterface
             LeaderboardScreen(
                 gameState = gameState,
                 navController = navController,

@@ -16,13 +16,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.lavrik.koalajump.GameState
+import com.lavrik.koalajump.GamePreferences
+import com.lavrik.koalajump.GameInterface
 import com.lavrik.koalajump.ui.components.AnimatedCloudsBackground
+import com.lavrik.koalajump.ui.components.NameInputDialog
 import kotlinx.coroutines.delay
 
 private const val TAG = "GameOverScreen"
@@ -35,7 +39,9 @@ fun GameOverScreen(
     gameState: GameState,
     onRestart: () -> Unit,
     onMainMenu: () -> Unit,
-    navController: NavController
+    navController: NavController,
+    // Add a parameter for the GameInterface
+    gameInterface: GameInterface? = null
 ) {
     // Debug logging
     Log.d(TAG, "GameOverScreen composing with score ${gameState.finalScore.value}")
@@ -52,6 +58,43 @@ fun GameOverScreen(
     // Track button press states for visual feedback
     var playAgainPressed by remember { mutableStateOf(false) }
     var mainMenuPressed by remember { mutableStateOf(false) }
+
+    // Add player name functionality
+    val context = LocalContext.current
+    val gamePreferences = remember { GamePreferences(context) }
+    var showNameDialog by remember { mutableStateOf(false) }
+
+    // Track if score has been submitted
+    var scoreSubmitted by remember { mutableStateOf(false) }
+
+    // Function to submit score
+    fun submitScore(playerName: String) {
+        if (scoreSubmitted) return
+
+        Log.d(TAG, "Submitting score ${gameState.finalScore.value} for player: $playerName")
+
+        // Submit to online leaderboard if GameInterface is available
+        if (gameInterface != null) {
+            gameInterface.submitFinalScore(gameState)
+            scoreSubmitted = true
+            Log.d(TAG, "Score submitted to online leaderboard")
+        } else {
+            Log.d(TAG, "GameInterface not available, score only saved locally")
+            // Still mark as submitted to prevent duplicate attempts
+            scoreSubmitted = true
+        }
+    }
+
+    // Check if we need to show name dialog on first game over
+    LaunchedEffect(Unit) {
+        // If player already has a name, submit score immediately
+        if (gamePreferences.hasPlayerName()) {
+            submitScore(gamePreferences.getPlayerName() ?: "Player")
+        } else {
+            // Otherwise show the dialog to collect name first
+            showNameDialog = true
+        }
+    }
 
     // Sky gradient with animated clouds background
     Box(
@@ -146,6 +189,29 @@ fun GameOverScreen(
                     }
                 )
             }
+        }
+
+        // Show name input dialog if needed
+        if (showNameDialog) {
+            NameInputDialog(
+                isFirstTime = !gamePreferences.hasPlayerName(),
+                initialName = gamePreferences.getPlayerName() ?: "",
+                onNameSubmitted = { name ->
+                    gamePreferences.setPlayerName(name)
+                    showNameDialog = false
+
+                    // Submit score with the new name
+                    submitScore(name)
+                },
+                onDismiss = {
+                    // Only allow dismiss if it's not the first time setup
+                    if (gamePreferences.hasPlayerName()) {
+                        showNameDialog = false
+                        // Submit score with existing name if dialog dismissed
+                        submitScore(gamePreferences.getPlayerName() ?: "Player")
+                    }
+                }
+            )
         }
     }
 

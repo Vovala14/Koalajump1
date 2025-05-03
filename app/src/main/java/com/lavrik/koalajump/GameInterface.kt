@@ -111,15 +111,24 @@ class GameInterface(private val context: Context, private val activity: Componen
         Log.d(TAG, "User signed out")
     }
 
-    // Submit score to Firebase
+    /**
+     * Submit score to Firebase
+     * Modified to use local player name as fallback if not signed in
+     */
     fun submitScore(score: Int, characterId: Int) {
-        if (!isSignedIn) {
-            Log.d(TAG, "Cannot submit score: User not signed in")
-            onScoreSubmitError("User not signed in")
-            return
-        }
+        // Get the GamePreferences instance
+        val gamePreferences = GamePreferences(context)
 
-        val playerName = displayName ?: "Anonymous"
+        var playerName = "Anonymous"
+
+        if (isSignedIn) {
+            // Use Firebase displayName if signed in
+            playerName = displayName ?: "Anonymous"
+        } else {
+            // Use local saved name as fallback
+            playerName = gamePreferences.getPlayerName() ?: "Anonymous"
+            Log.d(TAG, "Using local player name: $playerName for score submission")
+        }
 
         coroutineScope.launch {
             try {
@@ -147,15 +156,26 @@ class GameInterface(private val context: Context, private val activity: Componen
         }
     }
 
-    // Submit final score after game over
+    /**
+     * Submit final score after game over
+     * Modified to use local player name as fallback
+     */
     fun submitFinalScore(gameState: GameState) {
-        if (!isSignedIn) {
-            Log.d(TAG, "Cannot submit final score: User not signed in")
-            return
+        // Get the GamePreferences instance
+        val gamePreferences = GamePreferences(context)
+
+        var playerName = "Anonymous"
+
+        if (isSignedIn) {
+            // Use Firebase displayName if signed in
+            playerName = displayName ?: "Anonymous"
+        } else {
+            // Use local saved name as fallback
+            playerName = gamePreferences.getPlayerName() ?: "Anonymous"
+            Log.d(TAG, "Using local player name: $playerName for final score submission")
         }
 
         val finalScore = gameState.finalScore.value
-        val playerName = displayName ?: "Anonymous"
 
         coroutineScope.launch {
             try {

@@ -47,9 +47,11 @@ import com.lavrik.koalajump.entities.AnimatedKoala
 import com.lavrik.koalajump.game.GameEnvironment
 import com.lavrik.koalajump.ui.components.AnimatedCloudsBackground
 import com.lavrik.koalajump.ui.components.EnhancedGameHUD
+import com.lavrik.koalajump.ui.components.MovingBackgrounds
 import com.lavrik.koalajump.utils.EnvironmentAssetManager
 import com.lavrik.koalajump.utils.SoundManager
 import kotlinx.coroutines.*
+import kotlin.math.sin
 
 private const val TAG = "GameScreen"
 
@@ -94,7 +96,8 @@ fun PauseButton(onClick: () -> Unit) {
 
 /**
  * Improved GameScreen with proper animation and game loop
- * Now portrait-only with vibration feedback
+ * Now portrait-only with vibration feedback and level transition fixes
+ * Enhanced with variable booster duration and end warning
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -107,9 +110,6 @@ fun GameScreen(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
-
-    // Always portrait mode
-    val isPortrait = true
 
     // Screen dimensions
     val screenWidth = configuration.screenWidthDp.toFloat() * density.density
@@ -124,9 +124,14 @@ fun GameScreen(
     var isInvincible by remember { mutableStateOf(false) } // Added for invincibility tracking
     var gameRunning by remember { mutableStateOf(true) }
     var invincibleTime by remember { mutableStateOf(0L) } // Invincibility after hit
+    var gameSpeed by remember { mutableStateOf(16f) } // Track game speed
 
-    // Add safe period after level up with no obstacles
-    var obstacleSafePeriod by remember { mutableStateOf(0L) }
+    // Booster management
+    var isBoosterWarningActive by remember { mutableStateOf(false) }
+    var boosterJob: Job? = null
+
+    // Add flag to track when a level change was just detected
+    var needsObstacleRepositioning by remember { mutableStateOf(false) }
 
     // Navigation tracking - prevent multiple navigation attempts
     var navigatedToGameOver by remember { mutableStateOf(false) }
@@ -171,7 +176,7 @@ fun GameScreen(
         screenWidth + 1950f
     )) }
 
-    // FIXED: Initial collectibles positioning with correct Y offsets
+    // Initial collectibles positioning with correct Y offsets
     val collectibles = remember { mutableStateListOf(
         Collectible(screenWidth + 600f, groundY - 130f, true, false),
         Collectible(screenWidth + 1200f, groundY - 110f, true, false),
@@ -238,6 +243,17 @@ fun GameScreen(
         soundManager.setSoundEnabled(gameState.soundEnabled.value)
     }
 
+    // Add an effect to watch for level changes and reposition obstacles
+    LaunchedEffect(gameState.currentLevel.value) {
+        // Only do this for level changes after the game has started (not on initial level 1)
+        if (gameState.currentLevel.value > 1) {
+            Log.d(TAG, "Level change detected to level ${gameState.currentLevel.value} - repositioning obstacles")
+
+            // Set flag to trigger obstacle repositioning in the next frame
+            needsObstacleRepositioning = true
+        }
+    }
+
     // Track environment changes and trigger transition
     LaunchedEffect(gameState.currentEnvironment.value) {
         if (gameState.currentEnvironment.value != previousEnvironment) {
@@ -300,9 +316,6 @@ fun GameScreen(
     LaunchedEffect(gameState.currentLevel.value) {
         // Don't show for the initial level
         if (gameState.currentLevel.value > 1) {
-            // Add safe period for obstacles (2 seconds)
-            obstacleSafePeriod = System.currentTimeMillis() + 2000
-
             // Show environment info with level details
             showEnvironmentInfo = true
 
@@ -405,6 +418,20 @@ fun GameScreen(
     LaunchedEffect(Unit) {
         while (gameRunning && gameState.isGameActive.value && !isGameOver) {
             try {
+                // Check if obstacles need repositioning due to level change
+                if (needsObstacleRepositioning) {
+                    Log.d(TAG, "Repositioning obstacles for new level")
+
+                    // Immediately push all obstacles far off-screen to the right
+                    // Using 2.5 * screenWidth ensures they're well past the visible area
+                    obstacles = Array(obstacles.size) { i ->
+                        screenWidth + (i + 1) * 800f + (Math.random() * 500).toFloat()
+                    }
+
+                    // Reset the flag
+                    needsObstacleRepositioning = false
+                }
+
                 // Only update game if not paused
                 if (!isGamePaused) {
                     val currentTime = System.currentTimeMillis()
@@ -415,21 +442,32 @@ fun GameScreen(
                     // Get koala hitbox
                     val koalaHitbox = koala.getBounds()
 
-                    // Move obstacles - respect obstacle safe period
-                    val gameTime = currentTime - obstacleSafePeriod
-                    val startingSpeedFactor = minOf(1.0f, gameTime / 10000f) // Ramps up over 10 seconds
-                    val effectiveSpeed = 16f * (if (hasSpeedBoost) 1.5f else 1.0f) * gameState.currentEnvironment.value.speedMultiplier * startingSpeedFactor
+                    // Move obstacles - respect level transition invincibility
+                    val isInLevelTransition = gameState.isLevelTransitionInvincible()
+
+                    // Adjust movement speed during level transition (much slower)
+                    val speedFactor = if (isInLevelTransition) {
+                        0.3f // 30% normal speed during transition
+                    } else {
+                        1.0f // Normal speed otherwise
+                    }
+
+                    val effectiveSpeed = 16f * speedFactor * (if (hasSpeedBoost) 1.5f else 1.0f) *
+                            gameState.currentEnvironment.value.speedMultiplier
+
+                    // Update game speed for later use
+                    gameSpeed = effectiveSpeed
+
                     val newObstacles = obstacles.copyOf()
-                    val isSafePeriod = currentTime < obstacleSafePeriod
 
                     for (i in obstacles.indices) {
-                        // Move existing obstacles even during safe period
+                        // Move obstacle left
                         newObstacles[i] -= effectiveSpeed
 
                         // Reset obstacle when offscreen
-                        if (newObstacles[i] < -treeWidth) {
+                        if (newObstacles[i] < -100) { // Assuming obstacle width is around 100px
                             // Find the furthest obstacle
-                            val furthestObstacle = newObstacles.maxOrNull() ?: screenWidth
+                            val furthestObstacle = newObstacles.maxOrNull() ?: 1000f
 
                             // Increase spacing between trees when booster is active
                             val baseSpacing = 650f  // Increased spacing
@@ -438,17 +476,19 @@ fun GameScreen(
                             // Add 75% more space between trees when boosted
                             val boostSpacingMultiplier = if (hasSpeedBoost) 1.75f else 1.0f
 
-                            // During safe period, move obstacles completely off screen
-                            if (isSafePeriod) {
-                                newObstacles[i] = furthestObstacle + (baseSpacing * 3) + randomVariation
+                            // During level transition, push obstacles much further away
+                            if (isInLevelTransition) {
+                                newObstacles[i] = furthestObstacle + (baseSpacing * 4) +
+                                        randomVariation + screenWidth
                             } else {
-                                newObstacles[i] = furthestObstacle + (baseSpacing * boostSpacingMultiplier) + randomVariation
+                                newObstacles[i] = furthestObstacle + (baseSpacing * boostSpacingMultiplier) +
+                                        randomVariation
                             }
                         }
 
-                        // Skip collision checks during safe period or if invincible
-                        if (!isSafePeriod && !isInvincible) {
-                            // Create obstacle hitbox - FIXED: Use adjusted height for proper collision
+                        // Check for collision with koala - use gameState to check invincibility
+                        if (!gameState.isLevelTransitionInvincible() && !isInvincible) {
+                            // Create obstacle hitbox
                             val treeHitbox = Rect(
                                 left = newObstacles[i],
                                 top = groundY - treeHeight,
@@ -457,24 +497,31 @@ fun GameScreen(
                             )
 
                             // Check for collision with koala - only if not invincible
-                            if (currentTime > invincibleTime && !koala.isJumping && checkRectOverlap(koalaHitbox, treeHitbox)) {
-                                // Collision!
-                                soundManager.playHitSound()
+                            if (currentTime > invincibleTime && !koala.isJumping &&
+                                checkRectOverlap(koalaHitbox, treeHitbox)) {
 
-                                // Add vibration on collision
-                                vibrateDevice()
+                                // Try to decrease life - this now checks for level transition invincibility too
+                                val stillAlive = gameState.decreaseLife()
 
-                                lives--
-                                gameState.lives.value = lives // Update game state lives
+                                // Only play hit sound and apply effects if actually lost a life
+                                if (gameState.lives.value < lives) {
+                                    lives = gameState.lives.value
 
-                                // Set invincibility for 2 seconds
-                                invincibleTime = currentTime + 2000
+                                    // Collision!
+                                    soundManager.playHitSound()
 
-                                // Push obstacle away
-                                newObstacles[i] = screenWidth + 200f
+                                    // Add vibration on collision
+                                    vibrateDevice()
+
+                                    // Set invincibility for 2 seconds
+                                    invincibleTime = currentTime + 2000
+
+                                    // Push obstacle away
+                                    newObstacles[i] = screenWidth + 200f
+                                }
 
                                 // Check if game over
-                                if (lives <= 0) {
+                                if (!stillAlive) {
                                     // Critical fix: Update game state and set isGameOver flag
                                     gameState.updateScore(score)
                                     gameState.endGame()
@@ -545,24 +592,48 @@ fun GameScreen(
 
                                 // Apply score multiplier during boost
                                 val pointValue = gameState.currentEnvironment.value.collectibleValue * (if (hasSpeedBoost) 2 else 1)
+
+                                // FIX: Update both local score AND GameState score directly
                                 score += pointValue
+                                gameState.score.value = score
+
+                                // Log score update for debugging
+                                Log.d(TAG, "Collected item! Score now: $score, GameState score: ${gameState.score.value}")
 
                                 // Update to inactive state
                                 collectibles[i] = Collectible(newX, newY, false, collectible.isBooster)
 
                                 // Handle booster collectibles
                                 if (collectible.isBooster) {
+                                    // Cancel any existing booster job
+                                    boosterJob?.cancel()
+
+                                    // Set booster state
                                     hasSpeedBoost = true
                                     isInvincible = true // Set invincibility when collected
+                                    isBoosterWarningActive = false
                                     koala.setPowerUpState(true) // Set koala power-up state
                                     koala.setInvincibleState(true) // Set koala invincibility state
 
-                                    coroutineScope.launch {
-                                        delay(5000)
-                                        hasSpeedBoost = false
-                                        isInvincible = false
-                                        koala.setPowerUpState(false)
-                                        koala.setInvincibleState(false)
+                                    // Start new booster job with warning
+                                    boosterJob = coroutineScope.launch {
+                                        try {
+                                            // Wait until warning period (3 seconds in, 2 seconds before end)
+                                            delay(3000)
+
+                                            // Activate warning state
+                                            isBoosterWarningActive = true
+
+                                            // Wait for the final 2 seconds
+                                            delay(2000)
+                                        } finally {
+                                            // Always ensure these states are reset
+                                            hasSpeedBoost = false
+                                            isInvincible = false
+                                            isBoosterWarningActive = false
+                                            koala.setPowerUpState(false)
+                                            koala.setInvincibleState(false)
+                                        }
                                     }
                                 }
 
@@ -610,10 +681,21 @@ fun GameScreen(
                         }
                     }
 
-                    // Update score and check for environment changes
-                    gameState.score.value = score
-                    gameState.updateEnvironment(score)
+                    // FIX: Changed the order - first update environment/level check AFTER the score is updated
+                    // Check if game environment/level has changed
+                    val levelChanged = gameState.updateEnvironment(score)
+                    if (levelChanged) {
+                        // Additional safety - mark obstacles for repositioning next frame
+                        needsObstacleRepositioning = true
+                    }
+
+                    // FIX: Get the updated values from gameState, but don't overwrite score
+                    // as that would revert our collectible-based changes
+                    lives = gameState.lives.value
                     currentLevel = gameState.currentLevel.value
+
+                    // Check and update invincibility status from game state
+                    isInvincible = isInvincible || gameState.isLevelTransitionInvincible()
                 }
 
                 // Final game over check at the end of each frame
@@ -657,7 +739,7 @@ fun GameScreen(
 
     // Game UI
     Box(modifier = Modifier.fillMaxSize()) {
-        // Game canvas - Modified touch handling to use pointerInteropFilter
+        // Draw base canvas with sky gradient and essential game elements
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -682,12 +764,6 @@ fun GameScreen(
                 size = this.size
             )
 
-            // Add clouds in selected environments (Forest, Desert, Beach)
-            if (shouldShowClouds) {
-                // We can't directly draw clouds here since they're animated
-                // The AnimatedCloudsBackground will be added as a separate composable
-            }
-
             // Draw ground with environment ground color
             drawRect(
                 color = gameState.currentEnvironment.value.groundColor,
@@ -709,6 +785,35 @@ fun GameScreen(
             if (isVisible || hasSpeedBoost) {
                 // Draw koala using our AnimatedKoala class
                 koala.draw(this)
+            }
+
+            // Draw level transition invincibility shield
+            if (gameState.isLevelTransitionInvincible()) {
+                // Draw a pulsing shield effect around koala
+                val pulsePhase = (currentTime % 1000) / 1000f * (Math.PI * 2)
+                val pulseFactor = 1.0f + (sin(pulsePhase) * 0.2f).toFloat()
+
+                drawCircle(
+                    color = Color(0x553399FF), // Semi-transparent blue shield
+                    radius = koala.width * 1.5f * pulseFactor,
+                    center = Offset(koala.x + koala.width / 2, koala.y + koala.height / 2)
+                )
+
+                // Draw a text indicator at the top of the screen
+                val text = "LEVEL UP SHIELD ACTIVE"
+                val paint = Paint().apply {
+                    color = 0xFF3399FF.toInt() // Blue color
+                    textSize = 24f
+                    isFakeBoldText = true
+                    textAlign = Paint.Align.CENTER
+                }
+
+                drawContext.canvas.nativeCanvas.drawText(
+                    text,
+                    size.width / 2,
+                    80f,
+                    paint
+                )
             }
 
             // Draw obstacles with proper environment-specific images
@@ -778,6 +883,36 @@ fun GameScreen(
                     topLeft = Offset(0f, 0f),
                     size = Size(this.size.width, 10f)
                 )
+
+                // Draw warning indicator when booster is about to expire
+                if (isBoosterWarningActive) {
+                    // Flashing effect - alternate between visible and invisible
+                    val shouldShowWarning = (System.currentTimeMillis() / 250) % 2 == 0L
+
+                    if (shouldShowWarning) {
+                        drawRect(
+                            color = Color.Red.copy(alpha = 0.3f),
+                            topLeft = Offset(0f, 0f),
+                            size = Size(this.size.width, 10f)
+                        )
+                    }
+
+                    // Also add a text warning that's more noticeable
+                    val warningText = "BOOST ENDING!"
+                    val warningPaint = Paint().apply {
+                        color = android.graphics.Color.RED // Use Android's native Color class
+                        textSize = 24f
+                        isFakeBoldText = true
+                        textAlign = Paint.Align.CENTER
+                    }
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        warningText,
+                        size.width / 2,
+                        50f,
+                        warningPaint
+                    )
+                }
             }
 
             // Draw transition overlay if transitioning
@@ -797,6 +932,14 @@ fun GameScreen(
             }
         }
 
+        // Add environment-specific moving backgrounds
+        if (!isGamePaused) {
+            MovingBackgrounds(
+                environment = gameState.currentEnvironment.value,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
         // Add animated clouds as an overlay for selected environments (with low opacity)
         if (shouldShowClouds) {
             // Add faded clouds with environment-specific opacity
@@ -813,7 +956,7 @@ fun GameScreen(
             level = currentLevel,
             lives = lives,
             hasSpeedBoost = hasSpeedBoost,
-            isInvincible = isInvincible, // Added invincibility parameter
+            isInvincible = isInvincible || gameState.isLevelTransitionInvincible(), // Include level transition invincibility
             environment = gameState.currentEnvironment.value
         )
 
@@ -944,12 +1087,13 @@ fun GameScreen(
             koala.release()
             environmentAssetManager.release() // Release all environment assets
             soundManager.release()
+            boosterJob?.cancel()
 
             // If game is over but navigation didn't happen, try once more
             if (isGameOver && !navigatedToGameOver) {
                 Log.d(TAG, "Final cleanup - attempting navigation to game over")
 
-                // ADDED: Try to play game over sound again just in case
+                // Try to play game over sound again just in case
                 if (lives <= 0 && !gameRunning) {
                     soundManager.playGameOverSound()
                 }
@@ -962,7 +1106,9 @@ fun GameScreen(
     }
 }
 
-// Extension function to capitalize the first letter
+/**
+ * Extension function to capitalize the first letter
+ */
 private fun String.capitalize(): String {
     return this.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 }

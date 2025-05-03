@@ -22,6 +22,7 @@ class GamePreferences(private val context: Context) {
         private const val KEY_TOTAL_PLAYS = "total_plays"
         private const val KEY_IS_SIGNED_IN = "is_signed_in"
         private const val KEY_DISPLAY_NAME = "display_name"
+        private const val KEY_PLAYER_NAME = "player_name"
     }
 
     // Get preferences instance
@@ -163,11 +164,34 @@ class GamePreferences(private val context: Context) {
         Log.d(TAG, "Display name set to: $name")
     }
 
+    /**
+     * Get the player's saved display name, or null if not set yet
+     */
+    fun getPlayerName(): String? {
+        return prefs.getString(KEY_PLAYER_NAME, null)
+    }
+
+    /**
+     * Save the player's display name for the leaderboard
+     */
+    fun setPlayerName(name: String) {
+        prefs.edit().putString(KEY_PLAYER_NAME, name).apply()
+        Log.d(TAG, "Player name set to: $name")
+    }
+
+    /**
+     * Check if the player has already set a display name
+     */
+    fun hasPlayerName(): Boolean {
+        return getPlayerName() != null
+    }
+
     // Helper methods for multiple settings
     fun resetAllSettings() {
         // Keep high score but reset all other settings
         val highScore = getHighScore()
         val totalPlays = getTotalPlays()
+        val playerName = getPlayerName() // Keep player name too
 
         prefs.edit().clear().apply()
 
@@ -176,9 +200,14 @@ class GamePreferences(private val context: Context) {
             .putInt(KEY_HIGH_SCORE, highScore)
             .putInt(KEY_TOTAL_PLAYS, totalPlays)
             .putBoolean(KEY_FIRST_LAUNCH, false)
-            .commit()
+            .apply()
 
-        Log.d(TAG, "All settings reset to defaults (kept high score and play count)")
+        // Restore player name if it existed
+        if (playerName != null) {
+            prefs.edit().putString(KEY_PLAYER_NAME, playerName).apply()
+        }
+
+        Log.d(TAG, "All settings reset to defaults (kept high score, play count and player name)")
     }
 
     // Export settings as a map (useful for debugging)
@@ -191,7 +220,8 @@ class GamePreferences(private val context: Context) {
             "highScore" to getHighScore(),
             "totalPlays" to getTotalPlays(),
             "isSignedIn" to isSignedIn(),
-            "displayName" to getDisplayName()
+            "displayName" to getDisplayName(),
+            "playerName" to getPlayerName()
         )
     }
 }

@@ -68,25 +68,116 @@ enum class GameEnvironment(
         speedMultiplier = 2.0f,  // Increased from 1.8f to 2.0f for a more dramatic final level
         obstacleFrequency = 1.1f,
         collectibleValue = 30
+    ),
+
+    // New environments
+    DINOSAUR_VALLEY(
+        levelName = "Dinosaur Valley",
+        backgroundColors = listOf(Color(0xFFE6B800), Color(0xFFD28C00)), // Amber/gold gradient
+        groundColor = Color(0xFFB9824F), // Sandy brown
+        obstacleType = "raptor",
+        collectibleType = "eggs",
+        speedMultiplier = 2.25f, // Continuing the progression
+        obstacleFrequency = 1.2f,
+        collectibleValue = 35
+    ),
+
+    HAUNTED_GRAVEYARD(
+        levelName = "Haunted Graveyard",
+        backgroundColors = listOf(Color(0xFF483D8B), Color(0xFF2E2040)), // Dark purple/indigo
+        groundColor = Color(0xFF3C3C3C), // Dark gray ground
+        obstacleType = "ghost",
+        collectibleType = "pumpkin",
+        speedMultiplier = 2.5f,
+        obstacleFrequency = 1.3f,
+        collectibleValue = 40
+    ),
+
+    VOLCANIC_CAVES(
+        levelName = "Volcanic Caves",
+        backgroundColors = listOf(Color(0xFF8B0000), Color(0xFF3B0000)), // Dark red/black gradient
+        groundColor = Color(0xFF454545), // Volcanic rock/ash
+        obstacleType = "volcano",
+        collectibleType = "crystal",
+        speedMultiplier = 2.75f,
+        obstacleFrequency = 1.4f,
+        collectibleValue = 45
     );
 
     companion object {
-        // Changed from 150 to 100 for faster level progression
-        private const val POINTS_PER_LEVEL = 150
+        // Base points for the first level
+        private const val BASE_POINTS = 300
+
+        /**
+         * Calculate the score threshold for a specific level
+         * Level 1 (Forest): 300
+         * Level 2 (Desert): 600
+         * Level 3 (Mountains): 1,200
+         * And so on, doubling each time
+         */
+        private fun getPointsThresholdForLevel(level: Int): Int {
+            // Level is 1-indexed (Forest = level 1)
+            return BASE_POINTS * (1 shl (level - 1))
+        }
+
+        /**
+         * Calculate the total score needed to reach a specific level
+         */
+        private fun getTotalPointsForLevel(level: Int): Int {
+            var total = 0
+            for (i in 1 until level) {
+                total += getPointsThresholdForLevel(i)
+            }
+            return total
+        }
 
         /**
          * Get environment based on player score
          */
         fun getEnvironmentForScore(score: Int): GameEnvironment {
-            val level = (score / POINTS_PER_LEVEL) % values().size
-            return values()[level]
+            // Calculate which level the player is on
+            var level = 1
+            var totalPoints = 0
+
+            while (true) {
+                val levelThreshold = getPointsThresholdForLevel(level)
+                if (totalPoints + levelThreshold > score) {
+                    break
+                }
+
+                totalPoints += levelThreshold
+                level++
+
+                // If we've gone through all environments, cycle back to the first one
+                if (level > values().size) {
+                    level = 1
+                }
+            }
+
+            // Convert to 0-indexed for the enum
+            val environmentIndex = (level - 1) % values().size
+            return values()[environmentIndex]
         }
 
         /**
          * Get level number based on score (1-indexed)
          */
         fun getLevelForScore(score: Int): Int {
-            return (score / POINTS_PER_LEVEL) + 1
+            // Calculate which level the player is on
+            var level = 1
+            var totalPoints = 0
+
+            while (true) {
+                val levelThreshold = getPointsThresholdForLevel(level)
+                if (totalPoints + levelThreshold > score) {
+                    break
+                }
+
+                totalPoints += levelThreshold
+                level++
+            }
+
+            return level
         }
     }
 }

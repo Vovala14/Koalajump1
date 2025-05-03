@@ -14,15 +14,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.lavrik.koalajump.GameState
+import com.lavrik.koalajump.GamePreferences
+import com.lavrik.koalajump.ui.components.NameInputDialog
+import android.util.Log
+
+private const val TAG = "LeaderboardScreen"
 
 /**
- * Leaderboard screen showing high scores - with fixes for landscape mode
+ * Leaderboard screen showing high scores - simplified to use local scores only
  */
 @Composable
 fun LeaderboardScreen(
@@ -39,11 +45,23 @@ fun LeaderboardScreen(
     // Add scroll state for landscape mode
     val scrollState = rememberScrollState()
 
-    // Create placeholder scores for now
-    // Will be replaced with real data from GameInterface in the future
-    val scores = remember {
-        if (gameState.achievedHighScores.isEmpty()) {
-            // If no real scores yet, use placeholders
+    // Add player name functionality
+    val context = LocalContext.current
+    val gamePreferences = remember { GamePreferences(context) }
+    var showNameDialog by remember { mutableStateOf(false) }
+
+    // Get player name, defaulting to "You" if not set
+    val playerName = remember { gamePreferences.getPlayerName() ?: "You" }
+
+    // Create list of scores - only using local high scores
+    val scores = remember(gameState.achievedHighScores, playerName) {
+        // If there are local high scores, use those
+        if (gameState.achievedHighScores.isNotEmpty()) {
+            gameState.achievedHighScores.mapIndexed { index, score ->
+                Score(playerName, score, "Today")
+            }.sortedByDescending { it.score }
+        } else {
+            // Otherwise, use some placeholder scores
             listOf(
                 Score("Player 1", 500, "01/03"),
                 Score("Player 2", 450, "02/15"),
@@ -51,11 +69,6 @@ fun LeaderboardScreen(
                 Score("Player 4", 350, "02/25"),
                 Score("Player 5", 300, "03/01")
             )
-        } else {
-            // Use real scores from game state
-            gameState.achievedHighScores.mapIndexed { index, score ->
-                Score("You", score, "Today")
-            }
         }
     }
 
@@ -88,11 +101,10 @@ fun LeaderboardScreen(
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .padding(16.dp)
-                    .then(
-                        if (!isPortrait) Modifier.verticalScroll(scrollState)
-                        else Modifier
-                    ),
+                    // Make entire content scrollable to ensure access to all buttons
+                    .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header
@@ -104,7 +116,22 @@ fun LeaderboardScreen(
                     modifier = Modifier.padding(bottom = if (isPortrait) 16.dp else 8.dp)
                 )
 
-                if (scores.isNotEmpty()) {
+                if (scores.isEmpty()) {
+                    // Show empty state
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (isPortrait) 200.dp else 100.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No scores yet!\nStart playing to set a high score.",
+                            fontSize = if (isPortrait) 18.sp else 16.sp,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
                     // Scores header
                     Row(
                         modifier = Modifier
@@ -155,53 +182,21 @@ fun LeaderboardScreen(
                         }
                     }
 
-                    // Scores list - adjust height for different orientations
-                    if (isPortrait) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(240.dp)
-                        ) {
-                            itemsIndexed(scores) { index, score ->
-                                ScoreRow(
-                                    rank = index + 1,
-                                    score = score,
-                                    isPortrait = isPortrait,
-                                    isCurrentUser = score.playerName == "You"
-                                )
-                            }
-                        }
-                    } else {
-                        // In landscape, use a smaller height for the list
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(140.dp) // Smaller height for landscape
-                        ) {
-                            itemsIndexed(scores) { index, score ->
-                                ScoreRow(
-                                    rank = index + 1,
-                                    score = score,
-                                    isPortrait = isPortrait,
-                                    isCurrentUser = score.playerName == "You"
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // No scores yet
-                    Box(
+                    // Display scores in a Column
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(if (isPortrait) 200.dp else 100.dp),
-                        contentAlignment = Alignment.Center
+                            .heightIn(max = if (isPortrait) 240.dp else 140.dp)
                     ) {
-                        Text(
-                            text = "No scores yet!\nStart playing to set a high score.",
-                            fontSize = if (isPortrait) 18.sp else 16.sp,
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center
-                        )
+                        // Display scores
+                        scores.take(10).forEachIndexed { index, score ->
+                            ScoreRow(
+                                rank = index + 1,
+                                score = score,
+                                isPortrait = isPortrait,
+                                isCurrentUser = score.playerName == playerName
+                            )
+                        }
                     }
                 }
 
@@ -240,13 +235,36 @@ fun LeaderboardScreen(
                     }
                 }
 
+                // Add Change Name button if player name exists
+                if (gamePreferences.hasPlayerName()) {
+                    Spacer(modifier = Modifier.height(if (isPortrait) 12.dp else 8.dp))
+
+                    // Change Display Name button - wider to fit text
+                    Button(
+                        onClick = { showNameDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f) // Use a percentage of width for better fit
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFF57C00) // Orange color to differentiate
+                        )
+                    ) {
+                        // Make text size smaller to fit better
+                        Text(
+                            text = "Change Display Name",
+                            fontSize = if (isPortrait) 15.sp else 13.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+
                 // Close button - adjusted for landscape
-                Spacer(modifier = Modifier.height(if (isPortrait) 24.dp else 12.dp))
+                Spacer(modifier = Modifier.height(if (isPortrait) 16.dp else 12.dp))
 
                 Button(
                     onClick = onClose,
                     modifier = Modifier
-                        .width(if (isPortrait) 200.dp else 140.dp)
+                        .fillMaxWidth(0.7f) // Match width style with other button
                         .height(48.dp), // Reduced height slightly
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF673AB7)
@@ -258,7 +276,25 @@ fun LeaderboardScreen(
                         color = Color.White
                     )
                 }
+
+                // Add a small buffer at the bottom for better scrolling
+                Spacer(modifier = Modifier.height(8.dp))
             }
+        }
+
+        // Show name dialog if requested
+        if (showNameDialog) {
+            NameInputDialog(
+                isFirstTime = false,
+                initialName = playerName,
+                onNameSubmitted = { name ->
+                    gamePreferences.setPlayerName(name)
+                    showNameDialog = false
+                },
+                onDismiss = {
+                    showNameDialog = false
+                }
+            )
         }
     }
 }
@@ -294,7 +330,7 @@ fun ScoreRow(
         1 -> Color(0xFFFFD700) // Gold
         2 -> Color(0xFFC0C0C0) // Silver
         3 -> Color(0xFFCD7F32) // Bronze
-        else -> Color.Transparent
+        else -> Color.LightGray
     }
 
     Row(
@@ -310,7 +346,7 @@ fun ScoreRow(
             modifier = Modifier
                 .size(if (isPortrait) 28.dp else 24.dp)
                 .background(
-                    color = if (rank <= 3) medalColor else Color.LightGray,
+                    color = medalColor,
                     shape = RoundedCornerShape(if (isPortrait) 14.dp else 12.dp)
                 ),
             contentAlignment = Alignment.Center

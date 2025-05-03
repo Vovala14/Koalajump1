@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.animation.core.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -19,7 +21,7 @@ import com.lavrik.koalajump.game.GameEnvironment
 
 /**
  * Enhanced game HUD showing score, lives, level and environment
- * Lives displayed as hearts
+ * Lives displayed as beautiful hearts
  */
 @Composable
 fun EnhancedGameHUD(
@@ -71,9 +73,10 @@ fun EnhancedGameHUD(
         // Add some space
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Lives indicator with hearts
+        // Lives indicator with beautiful hearts
         Row(
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = "Lives: ",
@@ -82,19 +85,21 @@ fun EnhancedGameHUD(
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.width(4.dp))
+            // Add space before hearts
+            Spacer(modifier = Modifier.width(2.dp))
 
             // Hearts for lives
-            Row {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 for (i in 1..lives) {
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
-                            .padding(horizontal = 2.dp)
+                            .size(26.dp)
+                            .padding(1.dp)
                     ) {
                         HeartIcon(
-                            modifier = Modifier.fillMaxSize(),
-                            color = Color.Red
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
@@ -178,49 +183,130 @@ fun EnhancedGameHUD(
 }
 
 /**
- * A heart icon drawn with custom path
+ * A beautiful heart icon drawn with smooth path and gradient
  */
 @Composable
 fun HeartIcon(
     modifier: Modifier = Modifier,
     color: Color = Color.Red
 ) {
-    Canvas(modifier = modifier) {
+    // Create a subtle pulsing effect
+    val infiniteTransition = rememberInfiniteTransition(label = "heartBeat")
+    val scale = infiniteTransition.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "heartScale"
+    ).value
+
+    // Create gradient colors for a more vibrant look
+    val heartGradient = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFFFF5252), // Lighter red at top
+            Color(0xFFD50000)  // Deeper red at bottom
+        )
+    )
+
+    // Create shadow color
+    val shadowColor = Color.Black.copy(alpha = 0.2f)
+
+    Canvas(modifier = modifier.scale(scale)) {
         val width = size.width
         val height = size.height
 
-        // Create a heart shape using Path
-        val path = Path().apply {
-            // Start at the top center dip of the heart
-            moveTo(width / 2, height * 0.2f)
+        // Create a heart shape for shadow
+        val shadowPath = Path().apply {
+            // Move to top center dip of the heart
+            moveTo(width / 2, height * 0.3f)
 
             // Left curve
             cubicTo(
-                width * 0.2f, height * 0.0f,  // control point 1
-                width * 0.0f, height * 0.4f,  // control point 2
-                width * 0.3f, height * 0.7f   // end point
+                width * 0.2f, height * 0.1f,  // control point 1
+                width * 0.0f, height * 0.45f, // control point 2
+                width * 0.3f, height * 0.8f   // end point
             )
 
             // Bottom point of the heart
             lineTo(width / 2, height * 0.95f)
 
             // Right side of the heart
-            lineTo(width * 0.7f, height * 0.7f)
+            lineTo(width * 0.7f, height * 0.8f)
 
             // Right curve
             cubicTo(
-                width * 1.0f, height * 0.4f,  // control point 1
-                width * 0.8f, height * 0.0f,  // control point 2
-                width / 2, height * 0.2f      // end point
+                width * 1.0f, height * 0.45f, // control point 1
+                width * 0.8f, height * 0.1f,  // control point 2
+                width / 2, height * 0.3f      // end point
             )
 
             close()
         }
 
-        // Draw the heart
+        // Draw shadow with offset
+        // No translate function - just draw at offset coordinates
         drawPath(
-            path = path,
-            color = color,
+            path = shadowPath,
+            color = shadowColor,
+            style = Fill
+        )
+
+        // Create a heart shape using Path
+        val heartPath = Path().apply {
+            // Move to top center dip of the heart
+            moveTo(width / 2, height * 0.3f)
+
+            // Left curve
+            cubicTo(
+                width * 0.2f, height * 0.1f,  // control point 1
+                width * 0.0f, height * 0.45f, // control point 2
+                width * 0.3f, height * 0.8f   // end point
+            )
+
+            // Bottom point of the heart
+            lineTo(width / 2, height * 0.95f)
+
+            // Right side of the heart
+            lineTo(width * 0.7f, height * 0.8f)
+
+            // Right curve
+            cubicTo(
+                width * 1.0f, height * 0.45f, // control point 1
+                width * 0.8f, height * 0.1f,  // control point 2
+                width / 2, height * 0.3f      // end point
+            )
+
+            close()
+        }
+
+        // Draw the heart with gradient
+        drawPath(
+            path = heartPath,
+            brush = heartGradient,
+            style = Fill
+        )
+
+        // Add subtle highlight at top left for 3D effect
+        val highlightPath = Path().apply {
+            moveTo(width * 0.35f, height * 0.3f)
+            cubicTo(
+                width * 0.25f, height * 0.2f,
+                width * 0.15f, height * 0.3f,
+                width * 0.2f, height * 0.4f
+            )
+            cubicTo(
+                width * 0.3f, height * 0.3f,
+                width * 0.4f, height * 0.3f,
+                width * 0.35f, height * 0.3f
+            )
+            close()
+        }
+
+        drawPath(
+            path = highlightPath,
+            color = Color.White.copy(alpha = 0.3f),
             style = Fill
         )
     }

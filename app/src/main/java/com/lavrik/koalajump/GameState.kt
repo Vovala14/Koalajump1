@@ -26,6 +26,9 @@ class GameState(private val context: Context) {
         private const val KEY_HIGH_SCORE = "high_score"
         private const val KEY_SOUND_ENABLED = "sound_enabled"
         private const val KEY_VIBRATION_ENABLED = "vibration_enabled"
+
+        // Level transition constants
+        private const val LEVEL_TRANSITION_INVINCIBILITY_DURATION = 4000L // 4 seconds of invincibility on level up
     }
 
     // SharedPreferences for persistent storage
@@ -55,6 +58,10 @@ class GameState(private val context: Context) {
 
     // Current game level
     val currentLevel = mutableStateOf(INITIAL_LEVEL)
+
+    // Flag to track when a level transition is happening
+    val isLevelTransitioning = mutableStateOf(false)
+    val levelTransitionInvincibilityEnd = mutableStateOf(0L)
 
     // Current environment
     val currentEnvironment = mutableStateOf(GameEnvironment.FOREST)
@@ -144,21 +151,69 @@ class GameState(private val context: Context) {
         currentEnvironment.value = GameEnvironment.FOREST
         gameSpeed.value = INITIAL_SPEED
         currentCombo.value = 0
+        isLevelTransitioning.value = false
+        levelTransitionInvincibilityEnd.value = 0L
         _recentCollectTimes.clear()
         _gameOverState = false
     }
 
     /**
      * Update environment based on score
+     * Returns true if a level change occurred
      */
-    fun updateEnvironment(score: Int) {
+    fun updateEnvironment(score: Int): Boolean {
+        val previousLevel = currentLevel.value
         val newEnvironment = GameEnvironment.getEnvironmentForScore(score)
         currentLevel.value = GameEnvironment.getLevelForScore(score)
+
+        // Check if level actually changed
+        val levelChanged = previousLevel != currentLevel.value
+
+        // If level changed, start transition effects
+        if (levelChanged) {
+            Log.d(TAG, "Level changed from $previousLevel to ${currentLevel.value}")
+            startLevelTransition()
+        }
 
         // Only update if environment changed
         if (newEnvironment != currentEnvironment.value) {
             currentEnvironment.value = newEnvironment
         }
+
+        return levelChanged
+    }
+
+    /**
+     * Starts the level transition effects
+     */
+    private fun startLevelTransition() {
+        isLevelTransitioning.value = true
+
+        // Set invincibility for 4 seconds on level transition
+        val endTime = System.currentTimeMillis() + LEVEL_TRANSITION_INVINCIBILITY_DURATION
+        levelTransitionInvincibilityEnd.value = endTime
+
+        // Apply visual effects to koala
+        koala?.setInvincibleState(true)
+
+        Log.d(TAG, "Level transition started - invincible until $endTime")
+    }
+
+    /**
+     * Checks if player is currently invincible due to level transition
+     */
+    fun isLevelTransitionInvincible(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        val isInvincible = currentTime < levelTransitionInvincibilityEnd.value
+
+        // If invincibility just ended, update state and visual
+        if (!isInvincible && isLevelTransitioning.value) {
+            isLevelTransitioning.value = false
+            koala?.setInvincibleState(false)
+            Log.d(TAG, "Level transition invincibility ended")
+        }
+
+        return isInvincible
     }
 
     /**
@@ -241,6 +296,12 @@ class GameState(private val context: Context) {
      * @return true if still alive, false if game over
      */
     fun decreaseLife(): Boolean {
+        // If in level transition invincibility, don't lose a life
+        if (isLevelTransitionInvincible()) {
+            Log.d(TAG, "Hit during level transition invincibility - no life lost")
+            return true
+        }
+
         lives.value--
         Log.d(TAG, "Life lost. Remaining lives: ${lives.value}")
 
@@ -285,6 +346,9 @@ class GameState(private val context: Context) {
             lives.value++
             Log.d(TAG, "Bonus life awarded at level ${currentLevel.value}")
         }
+
+        // Start transition effects
+        startLevelTransition()
     }
 
     /**
@@ -385,6 +449,8 @@ class GameState(private val context: Context) {
         currentEnvironment.value = GameEnvironment.FOREST
         gameSpeed.value = INITIAL_SPEED
         currentCombo.value = 0
+        isLevelTransitioning.value = false
+        levelTransitionInvincibilityEnd.value = 0L
         _recentCollectTimes.clear()
         _gameOverState = false
     }

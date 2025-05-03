@@ -9,11 +9,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import com.lavrik.koalajump.R
 import java.io.InputStream
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * Animated koala character using a standard GIF animation
@@ -40,14 +45,19 @@ class AnimatedKoala(
         private const val TARGET_WIDTH = 83 // 50% larger than original
         private const val TARGET_HEIGHT = 83 // 50% larger than original
 
-        // Power-up visual effect constants
-        private const val POWER_UP_GLOW_ALPHA = 0x55      // Semi-transparent
-        private const val POWER_UP_GLOW_COLOR = 0xFFAA00  // Orange
-        private const val POWER_UP_GLOW_RADIUS_FACTOR = 1.2f  // Smaller glow
-        private const val POWER_UP_SPEED_LINE_LENGTH_FACTOR = 2.0f
-        private const val POWER_UP_SPEED_LINE_ALPHA = 0x44 // Semi-transparent
-        private const val POWER_UP_PULSE_PERIOD = 500      // Milliseconds
-        private const val POWER_UP_PULSE_MAGNITUDE = 0.05f // 5% size variation
+        // Power-up visual effect constants - Super Saiyan style!
+        private const val POWER_UP_AURA_ALPHA_OUTER = 0x55      // Semi-transparent outer aura
+        private const val POWER_UP_AURA_ALPHA_INNER = 0x88      // Less transparent inner aura
+        private const val POWER_UP_AURA_COLOR_PRIMARY = 0xFFFFD700  // Gold
+        private const val POWER_UP_AURA_COLOR_SECONDARY = 0xFFFFA500  // Orange
+        private const val POWER_UP_AURA_RADIUS_FACTOR = 1.6f    // Larger aura
+        private const val POWER_UP_INNER_AURA_RADIUS_FACTOR = 1.3f // Inner aura
+        private const val POWER_UP_SPEED_LINE_LENGTH_FACTOR = 3.0f // Longer speed lines
+        private const val POWER_UP_SPEED_LINE_ALPHA = 0x66 // Semi-transparent
+        private const val POWER_UP_PULSE_PERIOD = 300      // Faster pulsing
+        private const val POWER_UP_PULSE_MAGNITUDE = 0.08f // 8% size variation
+        private const val POWER_UP_SPARK_COUNT = 8       // Number of sparks
+        private const val POWER_UP_FLARE_COUNT = 6       // Number of flame flares
 
         // Invincibility effect constants
         private const val INVINCIBILITY_FLASH_PERIOD = 200  // Milliseconds per flash cycle
@@ -138,7 +148,7 @@ class AnimatedKoala(
     }
 
     /**
-     * Draw the koala using the GIF animation with power-up visual effects
+     * Draw the koala using the GIF animation with enhanced Super Saiyan power-up effects
      */
     fun draw(drawScope: DrawScope) {
         val animation = if (isPoweredUp && powerUpAnimation != null) {
@@ -180,23 +190,51 @@ class AnimatedKoala(
                 }
             }
 
-            // Add power-up visual effects before drawing koala
+            // Add Super Saiyan power-up visual effects before drawing koala
             if (isPoweredUp) {
-                // Draw a glowing aura around koala
+                val koalaCenter = Offset(x + width / 2, y + height / 2)
+
+                // Calculate pulsing effect for aura
+                val pulsePhase = (now % POWER_UP_PULSE_PERIOD) / POWER_UP_PULSE_PERIOD.toFloat() * (2 * PI)
+                val pulseFactor = 1.0f + (sin(pulsePhase) * POWER_UP_PULSE_MAGNITUDE).toFloat()
+
+                // Draw outer aura (golden glow)
                 drawScope.drawCircle(
-                    color = Color(POWER_UP_GLOW_COLOR).copy(alpha = POWER_UP_GLOW_ALPHA / 255f),
-                    radius = width * POWER_UP_GLOW_RADIUS_FACTOR,
-                    center = Offset(x + width / 2, y + height / 2)
+                    color = Color(POWER_UP_AURA_COLOR_PRIMARY).copy(alpha = POWER_UP_AURA_ALPHA_OUTER / 255f),
+                    radius = width * POWER_UP_AURA_RADIUS_FACTOR * pulseFactor,
+                    center = koalaCenter
                 )
 
-                // Draw speed lines behind koala
-                val speedLineLength = width * POWER_UP_SPEED_LINE_LENGTH_FACTOR
-                drawScope.drawLine(
-                    start = Offset(x - speedLineLength, y + height / 2),
-                    end = Offset(x, y + height / 2),
-                    color = Color.White.copy(alpha = POWER_UP_SPEED_LINE_ALPHA / 255f),
-                    strokeWidth = 5f
+                // Draw inner aura (more intense)
+                drawScope.drawCircle(
+                    color = Color(POWER_UP_AURA_COLOR_SECONDARY).copy(alpha = POWER_UP_AURA_ALPHA_INNER / 255f),
+                    radius = width * POWER_UP_INNER_AURA_RADIUS_FACTOR * pulseFactor,
+                    center = koalaCenter
                 )
+
+                // Draw Super Saiyan flame-like aura spikes
+                drawSuperSaiyanAura(drawScope, koalaCenter, now, pulseFactor)
+
+                // Draw energy sparks around the koala
+                drawEnergySparks(drawScope, koalaCenter, now)
+
+                // Draw speed lines behind koala (enhanced)
+                val speedLineLength = width * POWER_UP_SPEED_LINE_LENGTH_FACTOR
+                for (i in 0 until 5) {
+                    val lineY = y + height / 5 + (i * height / 5)
+                    val lineLength = speedLineLength * (0.7f + Random.nextFloat() * 0.6f)
+                    val lineAlpha = (POWER_UP_SPEED_LINE_ALPHA * (0.6f + Random.nextFloat() * 0.4f)).toInt()
+
+                    drawScope.drawLine(
+                        start = Offset(x - lineLength, lineY),
+                        end = Offset(x, lineY),
+                        color = Color.White.copy(alpha = lineAlpha / 255f),
+                        strokeWidth = 2f + Random.nextFloat() * 3f
+                    )
+                }
+
+                // Draw energy particles trailing the koala
+                drawEnergyParticles(drawScope, koalaCenter, now)
             }
 
             // Save the canvas state
@@ -241,6 +279,109 @@ class AnimatedKoala(
                 color = debugColor,
                 topLeft = Offset(x, y),
                 size = Size(width.toFloat(), height.toFloat())
+            )
+        }
+    }
+
+    /**
+     * Draw Super Saiyan flame-like aura around the koala
+     */
+    private fun drawSuperSaiyanAura(drawScope: DrawScope, center: Offset, now: Long, pulseFactor: Float) {
+        // Create several flame-like spikes around the koala
+        for (i in 0 until POWER_UP_FLARE_COUNT) {
+            val angle = i * (2 * PI.toFloat() / POWER_UP_FLARE_COUNT)
+
+            // Add time-based variation to each flare
+            val timeOffset = sin((now / 100f) + i * 1.5f) * 0.3f
+            val flareHeight = width * (1.2f + timeOffset) * pulseFactor
+
+            // Create flame path
+            val flamePath = Path().apply {
+                val startX = center.x + cos(angle) * width * 0.8f
+                val startY = center.y + sin(angle) * width * 0.8f
+
+                val midX1 = center.x + cos(angle - 0.2f) * flareHeight * 0.7f
+                val midY1 = center.y + sin(angle - 0.2f) * flareHeight * 0.7f
+
+                val peakX = center.x + cos(angle) * flareHeight
+                val peakY = center.y + sin(angle) * flareHeight
+
+                val midX2 = center.x + cos(angle + 0.2f) * flareHeight * 0.7f
+                val midY2 = center.y + sin(angle + 0.2f) * flareHeight * 0.7f
+
+                moveTo(startX, startY)
+                cubicTo(midX1, midY1, peakX, peakY, midX2, midY2)
+                close()
+            }
+
+            // Draw the flame with gradient from gold to transparent
+            val flareAlpha = (150 + sin(now / 200f + i) * 50).toInt().coerceIn(100, 200)
+            drawScope.drawPath(
+                path = flamePath,
+                color = Color(POWER_UP_AURA_COLOR_PRIMARY).copy(alpha = flareAlpha / 255f),
+                style = Stroke(width = 4f)
+            )
+
+            // Inner fill with less opacity
+            drawScope.drawPath(
+                path = flamePath,
+                color = Color(POWER_UP_AURA_COLOR_PRIMARY).copy(alpha = (flareAlpha * 0.5f) / 255f)
+            )
+        }
+    }
+
+    /**
+     * Draw energy sparks around the koala
+     */
+    private fun drawEnergySparks(drawScope: DrawScope, center: Offset, now: Long) {
+        for (i in 0 until POWER_UP_SPARK_COUNT) {
+            // Calculate position with time-based movement
+            val angle = (i * (2 * PI.toFloat() / POWER_UP_SPARK_COUNT)) + (now / 1000f)
+            val distance = width * (1.0f + sin(now / 200f + i) * 0.3f)
+
+            // Different sizes for sparks
+            val sparkSize = 3f + Random.nextFloat() * 4f
+
+            // Position sparks around koala
+            val sparkX = center.x + cos(angle) * distance
+            val sparkY = center.y + sin(angle) * distance
+
+            // Draw spark
+            drawScope.drawCircle(
+                color = Color.White,
+                radius = sparkSize,
+                center = Offset(sparkX, sparkY)
+            )
+
+            // Add glow effect to spark
+            drawScope.drawCircle(
+                color = Color(POWER_UP_AURA_COLOR_PRIMARY).copy(alpha = 0.5f),
+                radius = sparkSize * 2f,
+                center = Offset(sparkX, sparkY)
+            )
+        }
+    }
+
+    /**
+     * Draw energy particles trailing the koala
+     */
+    private fun drawEnergyParticles(drawScope: DrawScope, center: Offset, now: Long) {
+        // Generate some random particles behind the koala
+        val particleCount = 6
+        for (i in 0 until particleCount) {
+            val particleAge = (now / 50 + i * 100) % 500
+            val particleAlpha = 255 - (particleAge / 500f * 255).toInt()
+
+            if (particleAlpha <= 0) continue
+
+            val particleX = center.x - width * (0.8f + particleAge / 500f * 2f)
+            val particleY = center.y - height * 0.25f + Random.nextFloat() * height * 0.5f
+            val particleSize = 5f * (1f - particleAge / 500f)
+
+            drawScope.drawCircle(
+                color = Color(POWER_UP_AURA_COLOR_PRIMARY).copy(alpha = particleAlpha / 255f),
+                radius = particleSize,
+                center = Offset(particleX, particleY)
             )
         }
     }
