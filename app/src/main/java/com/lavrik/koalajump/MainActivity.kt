@@ -18,8 +18,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.google.android.gms.ads.MobileAds
 import com.lavrik.koalajump.screens.*
 import com.lavrik.koalajump.ui.components.KoalaJumpTheme
+import com.lavrik.koalajump.utils.AdManager
 
 
 /**
@@ -34,6 +36,7 @@ class MainActivity : ComponentActivity() {
     lateinit var bitmapManager: BitmapManager
     lateinit var performanceMonitor: PerformanceMonitor
     lateinit var gameInterface: GameInterface
+    lateinit var adManager: AdManager
 
     // Game state - accessible throughout the app
     private lateinit var gameState: GameState
@@ -61,6 +64,10 @@ class MainActivity : ComponentActivity() {
         bitmapManager = BitmapManager(this)
         performanceMonitor = PerformanceMonitor()
         gameInterface = GameInterface(this, this)
+        adManager = AdManager(this)
+
+        // Initialize AdMob
+        initializeAdMob()
 
         // Initialize game state with context
         gameState = GameState(this)
@@ -95,13 +102,38 @@ class MainActivity : ComponentActivity() {
                             // Update current screen
                             currentScreen = screen
                         },
-                        gameInterface = gameInterface // Pass gameInterface directly here
+                        gameInterface = gameInterface, // Pass gameInterface directly here
+                        adManager = adManager
                     )
                 }
             }
         }
 
         Log.d(TAG, "App started successfully")
+    }
+
+    /**
+     * Initialize AdMob
+     */
+    private fun initializeAdMob() {
+        try {
+            // Initialize AdMob
+            MobileAds.initialize(this) { initializationStatus ->
+                val statusMap = initializationStatus.adapterStatusMap
+                for (adapterClass in statusMap.keys) {
+                    val status = statusMap[adapterClass]
+                    Log.d(TAG, "Adapter name: ${adapterClass}, Description: ${status?.description}, " +
+                            "Latency: ${status?.latency}")
+                }
+
+                // Initialize the AdManager after AdMob is ready
+                adManager.initialize()
+            }
+
+            Log.d(TAG, "AdMob initialization started")
+        } catch (e: Exception) {
+            Log.e(TAG, "AdMob initialization error: ${e.message}", e)
+        }
     }
 
     /**
@@ -128,6 +160,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         performanceMonitor.start()
+
+        // Update ad network status
+        adManager.updateNetworkStatus()
     }
 
     override fun onPause() {
@@ -159,13 +194,15 @@ class MainActivity : ComponentActivity() {
  * @param showTutorial Flag indicating if the tutorial should be shown
  * @param onScreenChange Callback when navigation changes screens
  * @param gameInterface The interface for leaderboard/score submission
+ * @param adManager The manager for AdMob ads
  */
 @Composable
 fun GameNavigation(
     gameState: GameState,
     showTutorial: Boolean,
     onScreenChange: (String) -> Unit,
-    gameInterface: GameInterface
+    gameInterface: GameInterface,
+    adManager: AdManager
 ) {
     Log.d("GameNavigation", "Starting navigation")
 
@@ -182,7 +219,7 @@ fun GameNavigation(
     }
 
     // Remember the navigation controller to pass with gameState
-    SetupNavigation(navController, gameState, tutorialCompleted, gameInterface)
+    SetupNavigation(navController, gameState, tutorialCompleted, gameInterface, adManager)
 }
 
 /**
@@ -193,7 +230,8 @@ private fun SetupNavigation(
     navController: NavHostController,
     gameState: GameState,
     tutorialCompleted: MutableState<Boolean>,
-    gameInterface: GameInterface
+    gameInterface: GameInterface,
+    adManager: AdManager
 ) {
     NavHost(
         navController = navController,
@@ -249,7 +287,7 @@ private fun SetupNavigation(
 
         composable("gameOver") {
             Log.d("Navigation", "Showing Game Over Screen")
-            // Pass all required parameters to GameOverScreen including GameInterface
+            // Pass all required parameters to GameOverScreen including GameInterface and AdManager
             GameOverScreen(
                 gameState = gameState,
                 onRestart = {
@@ -266,7 +304,8 @@ private fun SetupNavigation(
                     }
                 },
                 navController = navController,
-                gameInterface = gameInterface // Pass GameInterface directly
+                gameInterface = gameInterface, // Pass GameInterface directly
+                adManager = adManager // Pass AdManager directly
             )
         }
 

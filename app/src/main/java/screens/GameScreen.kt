@@ -95,6 +95,44 @@ fun PauseButton(onClick: () -> Unit) {
 }
 
 /**
+ * Repositions any obstacles that are too close to the player
+ * to prevent immediate death after watching an ad
+ */
+private fun repositionObstaclesToSafePosition(
+    obstacles: Array<Float>,
+    collectibles: MutableList<Collectible>,
+    screenWidth: Float
+) {
+    val safeDistance = 500f
+    val playerX = screenWidth / 4f // Typical koala position
+
+    // Reposition any obstacles that are too close
+    obstacles.forEachIndexed { index, xPos ->
+        if (xPos in 0f..(playerX + safeDistance)) {
+            // This obstacle is too close to the player
+            // Move it to a safe distance
+            obstacles[index] = playerX + safeDistance + (200f * (index + 1))
+            Log.d(TAG, "Moved obstacle $index to safe position: ${obstacles[index]}")
+        }
+    }
+
+    // Also reposition collectibles if needed
+    collectibles.forEachIndexed { index, collectible ->
+        val (x, y, active, isBooster) = collectible
+        if (active && x in 0f..(playerX + safeDistance / 2)) {
+            // Move collectible to a safe position, but closer than obstacles
+            collectibles[index] = Collectible(
+                playerX + safeDistance / 2 + (100f * (index + 1)),
+                y,
+                active,
+                isBooster
+            )
+            Log.d(TAG, "Moved collectible $index to safe position")
+        }
+    }
+}
+
+/**
  * Improved GameScreen with proper animation and game loop
  * Now portrait-only with vibration feedback and level transition fixes
  * Enhanced with variable booster duration and end warning
@@ -241,6 +279,20 @@ fun GameScreen(
     LaunchedEffect(Unit) {
         gameState.resetForNewGame()
         soundManager.setSoundEnabled(gameState.soundEnabled.value)
+    }
+
+    // Add LaunchedEffect to check for continuing after watching an ad
+    LaunchedEffect(Unit) {
+        // Check if we're continuing after watching an ad
+        if (gameState.continueFromGameOver) {
+            Log.d(TAG, "Continuing game after watching ad - repositioning obstacles for safety")
+
+            // Reset flag
+            gameState.continueFromGameOver = false
+
+            // Reset any obstacles that are too close to the player
+            repositionObstaclesToSafePosition(obstacles, collectibles, screenWidth)
+        }
     }
 
     // Add an effect to watch for level changes and reposition obstacles
@@ -782,7 +834,13 @@ fun GameScreen(
             val currentTime = System.currentTimeMillis()
             val isVisible = currentTime > invincibleTime || (currentTime / 200) % 2 == 0L
 
-            if (isVisible || hasSpeedBoost) {
+            // Additional invincibility check - modify to include general invincibility
+            val gameStateInvincibility = gameState.isLevelTransitionInvincible()
+            val shouldShowKoala = (isVisible && !gameStateInvincibility) ||
+                    (gameStateInvincibility && (System.currentTimeMillis() / 150) % 2 == 0L) ||
+                    hasSpeedBoost
+
+            if (shouldShowKoala) {
                 // Draw koala using our AnimatedKoala class
                 koala.draw(this)
             }

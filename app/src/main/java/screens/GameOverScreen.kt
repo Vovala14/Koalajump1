@@ -27,6 +27,7 @@ import com.lavrik.koalajump.GamePreferences
 import com.lavrik.koalajump.GameInterface
 import com.lavrik.koalajump.ui.components.AnimatedCloudsBackground
 import com.lavrik.koalajump.ui.components.NameInputDialog
+import com.lavrik.koalajump.utils.AdManager
 import kotlinx.coroutines.delay
 
 private const val TAG = "GameOverScreen"
@@ -40,8 +41,9 @@ fun GameOverScreen(
     onRestart: () -> Unit,
     onMainMenu: () -> Unit,
     navController: NavController,
-    // Add a parameter for the GameInterface
-    gameInterface: GameInterface? = null
+    // Add a parameter for the GameInterface and AdManager
+    gameInterface: GameInterface? = null,
+    adManager: AdManager? = null
 ) {
     // Debug logging
     Log.d(TAG, "GameOverScreen composing with score ${gameState.finalScore.value}")
@@ -58,6 +60,7 @@ fun GameOverScreen(
     // Track button press states for visual feedback
     var playAgainPressed by remember { mutableStateOf(false) }
     var mainMenuPressed by remember { mutableStateOf(false) }
+    var watchAdPressed by remember { mutableStateOf(false) }
 
     // Add player name functionality
     val context = LocalContext.current
@@ -66,6 +69,20 @@ fun GameOverScreen(
 
     // Track if score has been submitted
     var scoreSubmitted by remember { mutableStateOf(false) }
+
+    // State for ad display
+    var isShowingAd by remember { mutableStateOf(false) }
+
+    // Initialize AdManager if provided
+    LaunchedEffect(Unit) {
+        adManager?.updateNetworkStatus()
+
+        // Force ad loading to make sure we have an ad ready
+        adManager?.loadRewardedAd()
+
+        // Log current ad status
+        Log.d(TAG, "Ad ready: ${adManager?.isAdReady?.value}, Network: ${adManager?.isNetworkAvailable?.value}")
+    }
 
     // Function to submit score
     fun submitScore(playerName: String) {
@@ -82,6 +99,49 @@ fun GameOverScreen(
             Log.d(TAG, "GameInterface not available, score only saved locally")
             // Still mark as submitted to prevent duplicate attempts
             scoreSubmitted = true
+        }
+    }
+
+    // Function to handle watching ad and getting extra life
+    fun watchAdForExtraLife() {
+        val activity = context as? androidx.activity.ComponentActivity
+        if (activity != null && adManager != null && adManager.isAdReady.value && adManager.isNetworkAvailable.value) {
+            watchAdPressed = true
+            isShowingAd = true
+
+            Log.d(TAG, "Showing rewarded ad for extra life")
+
+            adManager.showRewardedAd(
+                activity = activity,
+                onRewarded = {
+                    // Add an extra life
+                    gameState.addLife()
+
+                    // FIXED: Set invincibility flag in GameState
+                    gameState.setTemporaryInvincibility(true)
+
+                    // FIXED: Save that we're continuing from an ad watch for game to handle
+                    // Using the boolean preference setter method
+                    gameState.continueFromGameOver = true
+
+                    Log.d(TAG, "Extra life granted! Lives: ${gameState.lives.value} with temporary invincibility")
+
+                    // FIXED: Use the correct restart method instead of navigation
+                    // This ensures we get back to the game properly instead of going to main menu
+                    gameState.continueFromGameOver = true
+                    onRestart()
+                },
+                onAdClosed = {
+                    isShowingAd = false
+                    watchAdPressed = false
+
+                    // The user might have closed the ad without watching it completely
+                    // So we load a new ad for next time
+                    adManager.loadRewardedAd()
+                }
+            )
+        } else {
+            Log.d(TAG, "Cannot show ad: Ready=${adManager?.isAdReady?.value}, Network=${adManager?.isNetworkAvailable?.value}")
         }
     }
 
@@ -134,6 +194,10 @@ fun GameOverScreen(
                     gameState = gameState,
                     playAgainPressed = playAgainPressed,
                     mainMenuPressed = mainMenuPressed,
+                    watchAdPressed = watchAdPressed,
+                    adButtonEnabled = adManager?.isAdReady?.value == true &&
+                            adManager.isNetworkAvailable.value &&
+                            !isShowingAd,
                     onPlayAgain = {
                         playAgainPressed = true
                         gameState.resetForNewGame()
@@ -156,7 +220,8 @@ fun GameOverScreen(
                         } catch (e: Exception) {
                             Log.e(TAG, "Navigation error: ${e.message}", e)
                         }
-                    }
+                    },
+                    onWatchAd = { watchAdForExtraLife() }
                 )
             } else {
                 // Landscape layout (horizontal)
@@ -164,6 +229,10 @@ fun GameOverScreen(
                     gameState = gameState,
                     playAgainPressed = playAgainPressed,
                     mainMenuPressed = mainMenuPressed,
+                    watchAdPressed = watchAdPressed,
+                    adButtonEnabled = adManager?.isAdReady?.value == true &&
+                            adManager.isNetworkAvailable.value &&
+                            !isShowingAd,
                     onPlayAgain = {
                         playAgainPressed = true
                         gameState.resetForNewGame()
@@ -186,7 +255,8 @@ fun GameOverScreen(
                         } catch (e: Exception) {
                             Log.e(TAG, "Navigation error: ${e.message}", e)
                         }
-                    }
+                    },
+                    onWatchAd = { watchAdForExtraLife() }
                 )
             }
         }
@@ -229,6 +299,13 @@ fun GameOverScreen(
             mainMenuPressed = false
         }
     }
+
+    LaunchedEffect(watchAdPressed) {
+        if (watchAdPressed && !isShowingAd) {
+            delay(300)
+            watchAdPressed = false
+        }
+    }
 }
 
 @Composable
@@ -236,8 +313,11 @@ private fun PortraitGameOverContent(
     gameState: GameState,
     playAgainPressed: Boolean,
     mainMenuPressed: Boolean,
+    watchAdPressed: Boolean,
+    adButtonEnabled: Boolean,
     onPlayAgain: () -> Unit,
-    onMainMenu: () -> Unit
+    onMainMenu: () -> Unit,
+    onWatchAd: () -> Unit
 ) {
     // Score card
     Card(
@@ -304,6 +384,35 @@ private fun PortraitGameOverContent(
         }
     }
 
+    // Watch Ad for Extra Life button
+    Button(
+        onClick = onWatchAd,
+        modifier = Modifier
+            .width(220.dp)
+            .height(60.dp)
+            .scale(if (watchAdPressed) 0.95f else 1f),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFFF9800), // Orange
+            contentColor = Color.White,
+            disabledContainerColor = Color.Gray.copy(alpha = 0.5f)
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 8.dp,
+            pressedElevation = 0.dp
+        ),
+        enabled = adButtonEnabled
+    ) {
+        Text(
+            text = if (adButtonEnabled) "Watch Ad for Extra Life" else "Ad Not Available",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
     // Play Again button with direct navigation
     Button(
         onClick = onPlayAgain,
@@ -360,8 +469,11 @@ private fun LandscapeGameOverContent(
     gameState: GameState,
     playAgainPressed: Boolean,
     mainMenuPressed: Boolean,
+    watchAdPressed: Boolean,
+    adButtonEnabled: Boolean,
     onPlayAgain: () -> Unit,
-    onMainMenu: () -> Unit
+    onMainMenu: () -> Unit,
+    onWatchAd: () -> Unit
 ) {
     // Horizontal layout for landscape
     Row(
@@ -444,6 +556,35 @@ private fun LandscapeGameOverContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Watch Ad for Extra Life button
+            Button(
+                onClick = onWatchAd,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .scale(if (watchAdPressed) 0.95f else 1f),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFF9800), // Orange
+                    contentColor = Color.White,
+                    disabledContainerColor = Color.Gray.copy(alpha = 0.5f)
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 8.dp,
+                    pressedElevation = 0.dp
+                ),
+                enabled = adButtonEnabled
+            ) {
+                Text(
+                    text = if (adButtonEnabled) "Watch Ad for Extra Life" else "Ad Not Available",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Play Again button
             Button(
                 onClick = onPlayAgain,

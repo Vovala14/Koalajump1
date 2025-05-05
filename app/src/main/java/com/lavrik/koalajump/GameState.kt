@@ -2,6 +2,8 @@ package com.lavrik.koalajump
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import com.lavrik.koalajump.entities.AnimatedKoala
@@ -29,6 +31,9 @@ class GameState(private val context: Context) {
 
         // Level transition constants
         private const val LEVEL_TRANSITION_INVINCIBILITY_DURATION = 4000L // 4 seconds of invincibility on level up
+
+        // Ad-related invincibility constants (NEW)
+        private const val AD_REWARD_INVINCIBILITY_DURATION = 3000L // 3 seconds of invincibility after ad reward
     }
 
     // SharedPreferences for persistent storage
@@ -40,6 +45,9 @@ class GameState(private val context: Context) {
     // Game Over state - renamed to avoid clash
     private var _gameOverState = false
     val gameOverState: Boolean get() = _gameOverState
+
+    // Flag to track if we're continuing after watching an ad (NEW)
+    var continueFromGameOver = false
 
     // Scoring
     val score = mutableStateOf(0)
@@ -62,6 +70,11 @@ class GameState(private val context: Context) {
     // Flag to track when a level transition is happening
     val isLevelTransitioning = mutableStateOf(false)
     val levelTransitionInvincibilityEnd = mutableStateOf(0L)
+
+    // Temporary invincibility system (for ad rewards, etc.) (NEW)
+    private val _isTemporarilyInvincible = mutableStateOf(false)
+    val isTemporarilyInvincible: Boolean get() = _isTemporarilyInvincible.value
+    private val temporaryInvincibilityEnd = mutableStateOf(0L)
 
     // Current environment
     val currentEnvironment = mutableStateOf(GameEnvironment.FOREST)
@@ -139,6 +152,43 @@ class GameState(private val context: Context) {
     }
 
     /**
+     * Set temporary invincibility for a short duration (NEW)
+     * Used for ad rewards and other special cases
+     */
+    fun setTemporaryInvincibility(invincible: Boolean) {
+        _isTemporarilyInvincible.value = invincible
+
+        if (invincible) {
+            // Calculate end time
+            val endTime = System.currentTimeMillis() + AD_REWARD_INVINCIBILITY_DURATION
+            temporaryInvincibilityEnd.value = endTime
+
+            // Apply visual effect to koala if available
+            koala?.setInvincibleState(true)
+
+            // Automatically disable invincibility after the duration
+            Handler(Looper.getMainLooper()).postDelayed({
+                _isTemporarilyInvincible.value = false
+                koala?.setInvincibleState(false)
+                Log.d(TAG, "Temporary invincibility expired")
+            }, AD_REWARD_INVINCIBILITY_DURATION)
+
+            Log.d(TAG, "Temporary invincibility activated for ${AD_REWARD_INVINCIBILITY_DURATION}ms")
+        } else {
+            // Immediately end invincibility if requested
+            temporaryInvincibilityEnd.value = 0
+            koala?.setInvincibleState(false)
+        }
+    }
+
+    /**
+     * Check if player is currently invincible from any source (NEW)
+     */
+    fun isInvincible(): Boolean {
+        return isLevelTransitionInvincible() || isTemporarilyInvincible
+    }
+
+    /**
      * Reset game state for a new game
      */
     fun resetForNewGame() {
@@ -153,8 +203,11 @@ class GameState(private val context: Context) {
         currentCombo.value = 0
         isLevelTransitioning.value = false
         levelTransitionInvincibilityEnd.value = 0L
+        _isTemporarilyInvincible.value = false // NEW
+        temporaryInvincibilityEnd.value = 0L // NEW
         _recentCollectTimes.clear()
         _gameOverState = false
+        // Don't reset continueFromGameOver flag here - it's handled separately
     }
 
     /**
@@ -296,9 +349,9 @@ class GameState(private val context: Context) {
      * @return true if still alive, false if game over
      */
     fun decreaseLife(): Boolean {
-        // If in level transition invincibility, don't lose a life
-        if (isLevelTransitionInvincible()) {
-            Log.d(TAG, "Hit during level transition invincibility - no life lost")
+        // MODIFIED: Check for invincibility from ANY source (level transition OR temporary)
+        if (isInvincible()) {
+            Log.d(TAG, "Hit while invincible - no life lost")
             return true
         }
 
@@ -308,6 +361,9 @@ class GameState(private val context: Context) {
         // Reset combo on hit
         _recentCollectTimes.clear()
         currentCombo.value = 0
+
+        // NEW: Provide brief invincibility after being hit
+        setTemporaryInvincibility(true)
 
         // Check for game over
         if (lives.value <= 0) {
@@ -326,6 +382,9 @@ class GameState(private val context: Context) {
         if (lives.value < MAX_LIVES) {
             lives.value++
             Log.d(TAG, "Life gained. Lives: ${lives.value}")
+
+            // NEW: Give temporary invincibility when adding a life (for ad rewards)
+            setTemporaryInvincibility(true)
         }
     }
 
@@ -436,6 +495,32 @@ class GameState(private val context: Context) {
     }
 
     /**
+     * Save boolean value to preferences (NEW)
+     */
+    fun saveBoolean(key: String, value: Boolean) {
+        val sharedPreferences = context.getSharedPreferences("koala_jump_prefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit().putBoolean(key, value).apply()
+    }
+
+    /**
+     * Get boolean value from preferences (NEW)
+     */
+    fun getBoolean(key: String, defaultValue: Boolean = false): Boolean {
+        return prefs.getBoolean(key, defaultValue)
+    }
+
+    /**
+     * Check if we're continuing from an ad and clear the flag (NEW)
+     */
+    fun checkAndClearContinuingFromAd(): Boolean {
+        val continuing = getBoolean("continuing_from_ad", false)
+        if (continuing) {
+            saveBoolean("continuing_from_ad", false)
+        }
+        return continuing
+    }
+
+    /**
      * Reset everything to initial state
      */
     fun fullReset() {
@@ -451,7 +536,11 @@ class GameState(private val context: Context) {
         currentCombo.value = 0
         isLevelTransitioning.value = false
         levelTransitionInvincibilityEnd.value = 0L
+        _isTemporarilyInvincible.value = false // NEW
+        temporaryInvincibilityEnd.value = 0L // NEW
         _recentCollectTimes.clear()
         _gameOverState = false
+        continueFromGameOver = false // NEW
     }
+
 }

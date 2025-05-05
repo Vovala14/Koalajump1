@@ -99,6 +99,9 @@ dependencies {
     // Google Play Services
     implementation("com.google.android.gms:play-services-auth:21.0.0")
 
+    // AdMob Dependencies
+    implementation("com.google.android.gms:play-services-ads:22.6.0")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
