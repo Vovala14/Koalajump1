@@ -543,4 +543,15 @@ class GameState(private val context: Context) {
         continueFromGameOver = false // NEW
     }
 
+    /**
+     * Preserve score and level for continuation after watching an ad
+     */
+    fun preserveScoreAndLevel() {
+        // Copy final score back to active score
+        score.value = finalScore.value
+
+        // Level should already be preserved
+
+        Log.d(TAG, "Preserved score ${score.value} for continuation after ad")
+    }
 }

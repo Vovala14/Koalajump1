@@ -1,5 +1,4 @@
-// GameOverScreen.kt with fix
-package com.lavrik.koalajump.screens
+package screens
 
 import android.util.Log
 import androidx.compose.animation.core.*
@@ -42,9 +41,8 @@ fun GameOverScreen(
     onRestart: () -> Unit,
     onMainMenu: () -> Unit,
     navController: NavController,
-    // Add a parameter for the GameInterface and AdManager
-    gameInterface: GameInterface? = null,
-    adManager: AdManager? = null
+    // Add a parameter for the GameInterface
+    gameInterface: GameInterface? = null
 ) {
     // Debug logging
     Log.d(TAG, "GameOverScreen composing with score ${gameState.finalScore.value}")
@@ -70,19 +68,16 @@ fun GameOverScreen(
 
     // Track if score has been submitted
     var scoreSubmitted by remember { mutableStateOf(false) }
-
-    // State for ad display
+    
+    // Initialize ad manager
+    val activity = LocalContext.current as? androidx.activity.ComponentActivity
+    val adManager = remember { AdManager(context) }
     var isShowingAd by remember { mutableStateOf(false) }
-
-    // Initialize AdManager if provided
+    
+    // Initialize AdManager on first composition
     LaunchedEffect(Unit) {
-        adManager?.updateNetworkStatus()
-
-        // Force ad loading to make sure we have an ad ready
-        adManager?.loadRewardedAd()
-
-        // Log current ad status
-        Log.d(TAG, "Ad ready: ${adManager?.isAdReady?.value}, Network: ${adManager?.isNetworkAvailable?.value}")
+        adManager.initialize()
+        adManager.updateNetworkStatus()
     }
 
     // Function to submit score
@@ -103,54 +98,6 @@ fun GameOverScreen(
         }
     }
 
-    // Function to handle watching ad and getting extra life
-    fun watchAdForExtraLife() {
-        val activity = context as? androidx.activity.ComponentActivity
-        if (activity != null && adManager != null && adManager.isAdReady.value && adManager.isNetworkAvailable.value) {
-            watchAdPressed = true
-            isShowingAd = true
-
-            Log.d(TAG, "Showing rewarded ad for extra life")
-
-            adManager.showRewardedAd(
-                activity = activity,
-                onRewarded = {
-                    // Add an extra life
-                    gameState.addLife()
-
-                    // FIXED: Set invincibility flag in GameState
-                    gameState.setTemporaryInvincibility(true)
-
-                    // FIXED: Save that we're continuing from an ad watch for game to handle
-                    // Using the boolean preference setter method
-                    gameState.continueFromGameOver = true
-
-                    // ADDED FIX: Preserve the score and level before continuing
-                    // This ensures the game continues from the current score instead of resetting to 0
-                    gameState.score.value = gameState.finalScore.value
-                    Log.d(TAG, "Preserving score: ${gameState.finalScore.value} for continuation")
-
-                    Log.d(TAG, "Extra life granted! Lives: ${gameState.lives.value} with temporary invincibility")
-
-                    // FIXED: Use the correct restart method instead of navigation
-                    // This ensures we get back to the game properly instead of going to main menu
-                    gameState.continueFromGameOver = true
-                    onRestart()
-                },
-                onAdClosed = {
-                    isShowingAd = false
-                    watchAdPressed = false
-
-                    // The user might have closed the ad without watching it completely
-                    // So we load a new ad for next time
-                    adManager.loadRewardedAd()
-                }
-            )
-        } else {
-            Log.d(TAG, "Cannot show ad: Ready=${adManager?.isAdReady?.value}, Network=${adManager?.isNetworkAvailable?.value}")
-        }
-    }
-
     // Check if we need to show name dialog on first game over
     LaunchedEffect(Unit) {
         // If player already has a name, submit score immediately
@@ -159,6 +106,37 @@ fun GameOverScreen(
         } else {
             // Otherwise show the dialog to collect name first
             showNameDialog = true
+        }
+    }
+
+    // Function to handle watching ad and getting extra life
+    fun watchAdForExtraLife() {
+        if (activity != null && adManager.isAdReady.value && adManager.isNetworkAvailable.value) {
+            watchAdPressed = true
+            isShowingAd = true
+            
+            adManager.showRewardedAd(
+                activity = activity,
+                onRewarded = {
+                    // Add an extra life and restart
+                    gameState.addLife()
+                    gameState.resetForNewGame()
+                    
+                    // Navigate to game screen
+                    try {
+                        navController.navigate("game") {
+                            popUpTo("gameOver") { inclusive = true }
+                        }
+                        Log.d(TAG, "Navigation to game after watching ad")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Navigation error after ad: ${e.message}", e)
+                    }
+                },
+                onAdClosed = {
+                    isShowingAd = false
+                    watchAdPressed = false
+                }
+            )
         }
     }
 
@@ -201,15 +179,10 @@ fun GameOverScreen(
                     playAgainPressed = playAgainPressed,
                     mainMenuPressed = mainMenuPressed,
                     watchAdPressed = watchAdPressed,
-                    adButtonEnabled = adManager?.isAdReady?.value == true &&
-                            adManager.isNetworkAvailable.value &&
-                            !isShowingAd,
+                    adButtonEnabled = adManager.isAdReady.value && adManager.isNetworkAvailable.value && !isShowingAd,
                     onPlayAgain = {
                         playAgainPressed = true
-                        // FIXED: Only reset game if not continuing from ad watch
-                        if (!gameState.continueFromGameOver) {
-                            gameState.resetForNewGame()
-                        }
+                        gameState.resetForNewGame()
                         try {
                             navController.navigate("game") {
                                 popUpTo("gameOver") { inclusive = true }
@@ -239,15 +212,10 @@ fun GameOverScreen(
                     playAgainPressed = playAgainPressed,
                     mainMenuPressed = mainMenuPressed,
                     watchAdPressed = watchAdPressed,
-                    adButtonEnabled = adManager?.isAdReady?.value == true &&
-                            adManager.isNetworkAvailable.value &&
-                            !isShowingAd,
+                    adButtonEnabled = adManager.isAdReady.value && adManager.isNetworkAvailable.value && !isShowingAd,
                     onPlayAgain = {
                         playAgainPressed = true
-                        // FIXED: Only reset game if not continuing from ad watch
-                        if (!gameState.continueFromGameOver) {
-                            gameState.resetForNewGame()
-                        }
+                        gameState.resetForNewGame()
                         try {
                             navController.navigate("game") {
                                 popUpTo("gameOver") { inclusive = true }
@@ -311,7 +279,7 @@ fun GameOverScreen(
             mainMenuPressed = false
         }
     }
-
+    
     LaunchedEffect(watchAdPressed) {
         if (watchAdPressed && !isShowingAd) {
             delay(300)
@@ -395,7 +363,7 @@ private fun PortraitGameOverContent(
             }
         }
     }
-
+    
     // Watch Ad for Extra Life button
     Button(
         onClick = onWatchAd,
@@ -422,7 +390,7 @@ private fun PortraitGameOverContent(
             textAlign = TextAlign.Center
         )
     }
-
+    
     Spacer(modifier = Modifier.height(16.dp))
 
     // Play Again button with direct navigation
@@ -594,9 +562,9 @@ private fun LandscapeGameOverContent(
                     textAlign = TextAlign.Center
                 )
             }
-
+            
             Spacer(modifier = Modifier.height(12.dp))
-
+            
             // Play Again button
             Button(
                 onClick = onPlayAgain,
