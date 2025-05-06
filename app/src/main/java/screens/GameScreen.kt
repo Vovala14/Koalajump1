@@ -55,6 +55,11 @@ import kotlin.math.sin
 
 private const val TAG = "GameScreen"
 
+// Add local constants for GameState companion object private values
+private const val INITIAL_SPEED = 16f
+private const val SPEED_INCREASE_PER_LEVEL = 1.2f
+private const val MAX_GAME_SPEED = 35f
+
 // Data class for collectibles: x, y, active, isBooster
 data class Collectible(val x: Float, val y: Float, val active: Boolean, val isBooster: Boolean)
 
@@ -155,14 +160,15 @@ fun GameScreen(
     val groundY = screenHeight * 0.8f
 
     // Game state
-    var score by remember { mutableStateOf(0) }
-    var lives by remember { mutableStateOf(3) }
-    var currentLevel by remember { mutableStateOf(1) }
+    // FIXED: Initialize score from gameState.score.value instead of 0
+    var score by remember { mutableStateOf(gameState.score.value) }
+    var lives by remember { mutableStateOf(gameState.lives.value) }
+    var currentLevel by remember { mutableStateOf(gameState.currentLevel.value) }
     var hasSpeedBoost by remember { mutableStateOf(false) }
     var isInvincible by remember { mutableStateOf(false) } // Added for invincibility tracking
     var gameRunning by remember { mutableStateOf(true) }
     var invincibleTime by remember { mutableStateOf(0L) } // Invincibility after hit
-    var gameSpeed by remember { mutableStateOf(16f) } // Track game speed
+    var gameSpeed by remember { mutableStateOf(INITIAL_SPEED) } // Track game speed
 
     // Booster management
     var isBoosterWarningActive by remember { mutableStateOf(false) }
@@ -170,6 +176,9 @@ fun GameScreen(
 
     // Add flag to track when a level change was just detected
     var needsObstacleRepositioning by remember { mutableStateOf(false) }
+
+    // FIXED: Add flag to track if we're continuing after an ad
+    var isContinuingAfterAd by remember { mutableStateOf(false) }
 
     // Navigation tracking - prevent multiple navigation attempts
     var navigatedToGameOver by remember { mutableStateOf(false) }
@@ -277,22 +286,35 @@ fun GameScreen(
 
     // Game initialization
     LaunchedEffect(Unit) {
-        gameState.resetForNewGame()
-        soundManager.setSoundEnabled(gameState.soundEnabled.value)
-    }
-
-    // Add LaunchedEffect to check for continuing after watching an ad
-    LaunchedEffect(Unit) {
         // Check if we're continuing after watching an ad
         if (gameState.continueFromGameOver) {
             Log.d(TAG, "Continuing game after watching ad - repositioning obstacles for safety")
 
-            // Reset flag
+            // FIXED: Set the flag for continuing after ad
+            isContinuingAfterAd = true
+
+            // FIXED: Explicitly get score and lives from gameState
+            score = gameState.score.value
+            lives = gameState.lives.value
+            currentLevel = gameState.currentLevel.value
+
+            Log.d(TAG, "RESTORED STATE: score=$score, lives=$lives, level=$currentLevel")
+
+            // Reset flag in GameState
             gameState.continueFromGameOver = false
 
             // Reset any obstacles that are too close to the player
             repositionObstaclesToSafePosition(obstacles, collectibles, screenWidth)
+        } else {
+            // Only reset if this is a new game, not a continuation
+            Log.d(TAG, "Starting new game - resetting GameState")
+            gameState.resetForNewGame()
+            score = 0
+            lives = gameState.lives.value
+            currentLevel = gameState.currentLevel.value
         }
+
+        soundManager.setSoundEnabled(gameState.soundEnabled.value)
     }
 
     // Add an effect to watch for level changes and reposition obstacles
@@ -504,7 +526,7 @@ fun GameScreen(
                         1.0f // Normal speed otherwise
                     }
 
-                    val effectiveSpeed = 16f * speedFactor * (if (hasSpeedBoost) 1.5f else 1.0f) *
+                    val effectiveSpeed = INITIAL_SPEED * speedFactor * (if (hasSpeedBoost) 1.5f else 1.0f) *
                             gameState.currentEnvironment.value.speedMultiplier
 
                     // Update game speed for later use
@@ -648,6 +670,9 @@ fun GameScreen(
                                 // FIX: Update both local score AND GameState score directly
                                 score += pointValue
                                 gameState.score.value = score
+
+                                // FIXED: Call recordCollectible to properly track combos
+                                gameState.recordCollectible()
 
                                 // Log score update for debugging
                                 Log.d(TAG, "Collected item! Score now: $score, GameState score: ${gameState.score.value}")

@@ -92,6 +92,12 @@ class GameState(private val context: Context) {
     // Koala reference for visual effects
     private var koala: AnimatedKoala? = null
 
+    // NEW: Store temporary state for continuing after ad
+    private var tempScore = 0
+    private var tempLevel = 1
+    private var tempGameSpeed = INITIAL_SPEED
+    private var tempEnvironment = GameEnvironment.FOREST
+
     // Private methods to load settings from SharedPreferences with backup recovery
     private fun loadHighScore(): Int {
         // Try to load from primary location
@@ -189,9 +195,59 @@ class GameState(private val context: Context) {
     }
 
     /**
+     * Store game state before showing ad for continue
+     * NEW: Better implementation to save all necessary state
+     */
+    fun saveGameStateForContinue() {
+        tempScore = score.value
+        tempLevel = currentLevel.value
+        tempGameSpeed = gameSpeed.value
+        tempEnvironment = currentEnvironment.value
+
+        // Save to preferences in case app is killed
+        saveBoolean("continuing_from_ad", true)
+
+        Log.d(TAG, "Saved game state for continue: score=$tempScore, level=$tempLevel, speed=$tempGameSpeed")
+    }
+
+    /**
+     * Continue game after watching ad
+     * NEW: Better implementation to restore all necessary state
+     */
+    fun continueFromAd() {
+        Log.d(TAG, "Continuing from ad with score=$tempScore, level=$tempLevel, speed=$tempGameSpeed")
+
+        isGameActive.value = true
+        _gameOverState = false
+        score.value = tempScore
+        currentLevel.value = tempLevel
+        gameSpeed.value = tempGameSpeed
+        currentEnvironment.value = tempEnvironment
+        lives.value = 1 // Give player one life to continue
+        currentCombo.value = 0 // Reset combo as a small penalty
+        _recentCollectTimes.clear()
+
+        // Set flag to indicate we're continuing after an ad
+        continueFromGameOver = true
+
+        // Give brief invincibility after continuing
+        setTemporaryInvincibility(true)
+
+        // Clear the continuing flag
+        saveBoolean("continuing_from_ad", false)
+    }
+
+    /**
      * Reset game state for a new game
      */
     fun resetForNewGame() {
+        // Don't reset if we're continuing from an ad
+        if (continueFromGameOver) {
+            Log.d(TAG, "Skipping reset because we're continuing from game over")
+            continueFromGameOver = false
+            return
+        }
+
         Log.d(TAG, "Resetting game state")
         isGameActive.value = true
         score.value = 0
@@ -207,7 +263,6 @@ class GameState(private val context: Context) {
         temporaryInvincibilityEnd.value = 0L // NEW
         _recentCollectTimes.clear()
         _gameOverState = false
-        // Don't reset continueFromGameOver flag here - it's handled separately
     }
 
     /**
@@ -364,6 +419,11 @@ class GameState(private val context: Context) {
 
         // NEW: Provide brief invincibility after being hit
         setTemporaryInvincibility(true)
+
+        // If we're about to lose our last life, save our state for potential continuation
+        if (lives.value == 0) {
+            saveGameStateForContinue()
+        }
 
         // Check for game over
         if (lives.value <= 0) {
